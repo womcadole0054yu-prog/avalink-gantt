@@ -175,6 +175,13 @@
     height: 28px;
     border-right: 1px solid var(--axis-line);
     border-bottom: 2px solid var(--axis-line);
+    /* 中の月ラベルをstickyで追尾させるため overflow は隠さない */
+    overflow: visible;
+  }
+  .h-month .m-label {
+    position: sticky;
+    display: inline-block;
+    white-space: nowrap;
   }
   .h-day { height: 26px; }
   .h-dow { height: 22px; font-size: 11px; color: var(--text-muted); }
@@ -3970,7 +3977,8 @@ function renderGantt() {
     leftOffset += c.width;
   });
 
-  /* 月ヘッダー */
+  /* 月ヘッダー（ラベルは横スクロールに追尾する） */
+  const fixedTotal = FIXED_COLS.reduce((a, c) => a + c.width, 0);
   let mStart = 0;
   for (let i = 1; i <= cols.length; i++) {
     const prev = cols[i - 1], cur = cols[i];
@@ -3980,7 +3988,11 @@ function renderGantt() {
       el.style.gridColumn = `${FIXED_COLS.length + 1 + mStart} / ${FIXED_COLS.length + 1 + i}`;
       el.style.gridRow = "1";
       const d = cols[mStart].start;
-      el.textContent = `${d.getFullYear()}/${d.getMonth() + 1}`;
+      const label = document.createElement("span");
+      label.className = "m-label";
+      label.style.left = (fixedTotal + 8) + "px";
+      label.textContent = `${d.getFullYear()}/${d.getMonth() + 1}`;
+      el.appendChild(label);
       frag.appendChild(el);
       mStart = i;
     }
