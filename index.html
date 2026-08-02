@@ -494,6 +494,16 @@
   .modal .actions .spacer { margin-right: auto; }
   .hidden { display: none !important; }
 
+  /* ---------- mobile ---------- */
+  @media (max-width: 640px) {
+    .toolbar { padding: 6px 8px; gap: 6px; }
+    .toolbar h1 { font-size: 13.5px; margin-right: 0; }
+    .legend { display: none; }
+    .btn { padding: 5px 9px; font-size: 12px; }
+    .seg button { padding: 5px 10px; font-size: 12px; }
+    .f-cell.status { justify-content: center; padding: 0 2px; }
+  }
+
   /* ---------- help ---------- */
   .help-modal { width: min(520px, calc(100vw - 32px)); }
   .help-modal h3 {
@@ -3835,15 +3845,30 @@ function uid() {
  * 共通ヘルパー
  * ============================================================ */
 const STATUS_LABEL = { done: "✅完了", active: "🔄進行中", planned: "⏳予定" };
+const STATUS_ICON = { done: "✅", active: "🔄", planned: "⏳" };
 const DOW = ["日", "月", "火", "水", "木", "金", "土"];
-const FIXED_COLS = [
-  { label: "サイクル", width: 110 },
-  { label: "フェーズ", width: 240 },
-  { label: "開始日",   width: 58 },
-  { label: "終了日",   width: 58 },
-  { label: "担当",     width: 100 },
-  { label: "状態",     width: 80 },
-];
+
+/* スマホでは固定列を「フェーズ｜状態」だけに絞って、チャートに画面を使う */
+let MOBILE = false;
+let FIXED_COLS = [];
+function computeCols() {
+  MOBILE = matchMedia("(max-width: 640px)").matches;
+  FIXED_COLS = MOBILE
+    ? [
+        { key: "phase",  label: "フェーズ", width: 150 },
+        { key: "status", label: "状態",     width: 46 },
+      ]
+    : [
+        { key: "cycle",  label: "サイクル", width: 110 },
+        { key: "phase",  label: "フェーズ", width: 240 },
+        { key: "start",  label: "開始日",   width: 58 },
+        { key: "end",    label: "終了日",   width: 58 },
+        { key: "owner",  label: "担当",     width: 100 },
+        { key: "status", label: "状態",     width: 80 },
+      ];
+}
+computeCols();
+matchMedia("(max-width: 640px)").addEventListener("change", () => { computeCols(); render(); });
 const DAY_W = 28;
 const WEEK_W = 72;
 
@@ -4061,24 +4086,29 @@ function renderGantt() {
         bg.dataset.pid = p.id;
         frag.appendChild(bg);
 
-        const values = ["", p.name, fmtMD(s), fmtMD(e), p.owner || "", STATUS_LABEL[p.status] || ""];
-        const focusIds = [null, "mName", "mStart", "mEnd", "mOwner", "mStatus"];
+        const CELL = {
+          cycle:  { value: "", focus: null, cls: "" },
+          phase:  { value: p.name, focus: "mName", cls: " wrap" },
+          start:  { value: fmtMD(s), focus: "mStart", cls: " num" },
+          end:    { value: fmtMD(e), focus: "mEnd", cls: " num" },
+          owner:  { value: p.owner || "", focus: "mOwner", cls: "" },
+          status: { value: MOBILE ? (STATUS_ICON[p.status] || "") : (STATUS_LABEL[p.status] || ""), focus: "mStatus", cls: " status" },
+        };
         let off = 0;
         FIXED_COLS.forEach((c2, i) => {
+          const def = CELL[c2.key];
           const el = document.createElement("div");
-          el.className = "f-cell" + dim +
-            (i === FIXED_COLS.length - 1 ? " last status" : "") +
-            (i === 1 ? " wrap" : "") +
-            (i === 2 || i === 3 ? " num" : "") +
-            (i >= 1 ? " clickable" : "");
+          el.className = "f-cell" + dim + def.cls +
+            (i === FIXED_COLS.length - 1 ? " last" : "") +
+            (c2.key !== "cycle" ? " clickable" : "");
           el.style.gridColumn = `${i + 1}`;
           el.style.gridRow = `${row}`;
           el.style.left = off + "px";
-          el.textContent = values[i];
+          el.textContent = def.value;
           el.dataset.pid = p.id;
-          if (i >= 1) {
-            el.title = i === 1 ? p.name : "クリックで編集";
-            el.addEventListener("click", () => openPhaseModal(p.id, project.id, cycle.id, focusIds[i]));
+          if (c2.key !== "cycle") {
+            el.title = c2.key === "phase" ? p.name : "クリックで編集";
+            el.addEventListener("click", () => openPhaseModal(p.id, project.id, cycle.id, def.focus));
           }
           frag.appendChild(el);
           off += c2.width;
@@ -4145,12 +4175,13 @@ function renderOverview() {
   const projects = visibleProjects().filter(p => showHidden || !p.hidden);
   const range = computeRange(projects);
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  const PROD_W = 170, REL_W = 130;
+  const PROD_W = MOBILE ? 130 : 170, REL_W = MOBILE ? 96 : 130;
+  const DATE_W = MOBILE ? 74 : 90;
   const totalDays = Math.round((range.end - range.start) / 86400000) + 1;
   const rowOf = (d) => 3 + Math.round((d - range.start) / 86400000);
 
   gantt.style.gridTemplateColumns =
-    "90px " + projects.map(() => `${PROD_W}px ${REL_W}px`).join(" ");
+    `${DATE_W}px ` + projects.map(() => `${PROD_W}px ${REL_W}px`).join(" ");
   gantt.style.gridTemplateRows = `28px 24px repeat(${totalDays}, 26px)`;
 
   const frag = document.createDocumentFragment();
@@ -4645,11 +4676,8 @@ let ctxPid = null;
 
 function hideCtx() { ctxMenu.style.display = "none"; ctxPid = null; }
 
-document.addEventListener("contextmenu", (ev) => {
-  const el = ev.target.closest("[data-pid]");
-  if (!el) { hideCtx(); return; }
-  ev.preventDefault();
-  ctxPid = el.dataset.pid;
+function openCtxAt(pid, cx, cy) {
+  ctxPid = pid;
   const found = findPhase(ctxPid);
   if (!found) { hideCtx(); return; }
   tooltip.style.display = "none";
@@ -4657,12 +4685,49 @@ document.addEventListener("contextmenu", (ev) => {
   $("ctxHide").textContent = found.phase.hidden ? "👁 表示に戻す" : "🙈 非表示にする";
   ctxMenu.style.display = "block";
   const r = ctxMenu.getBoundingClientRect();
-  let x = ev.clientX, y = ev.clientY;
+  let x = cx, y = cy;
   if (x + r.width > innerWidth - 8) x = innerWidth - r.width - 8;
   if (y + r.height > innerHeight - 8) y = innerHeight - r.height - 8;
   ctxMenu.style.left = x + "px";
   ctxMenu.style.top = y + "px";
+}
+
+document.addEventListener("contextmenu", (ev) => {
+  const el = ev.target.closest("[data-pid]");
+  if (!el) { hideCtx(); return; }
+  ev.preventDefault();
+  openCtxAt(el.dataset.pid, ev.clientX, ev.clientY);
 });
+
+/* スマホ: 長押しでメニューを開く（iPhoneはcontextmenuが発火しないため） */
+let lpTimer = null, lpStart = null, lpFiredAt = 0;
+document.addEventListener("touchstart", (ev) => {
+  const el = ev.target.closest("[data-pid]");
+  if (!el) return;
+  const t = ev.touches[0];
+  lpStart = { x: t.clientX, y: t.clientY };
+  clearTimeout(lpTimer);
+  lpTimer = setTimeout(() => {
+    lpFiredAt = Date.now();
+    openCtxAt(el.dataset.pid, lpStart.x, lpStart.y);
+  }, 550);
+}, { passive: true });
+document.addEventListener("touchmove", (ev) => {
+  if (!lpTimer) return;
+  const t = ev.touches[0];
+  if (Math.abs(t.clientX - lpStart.x) > 10 || Math.abs(t.clientY - lpStart.y) > 10) {
+    clearTimeout(lpTimer); lpTimer = null;
+  }
+}, { passive: true });
+document.addEventListener("touchend", () => { clearTimeout(lpTimer); lpTimer = null; });
+/* 長押し直後に飛んでくるclickでメニューが閉じたり編集が開いたりしないよう抑止 */
+document.addEventListener("click", (ev) => {
+  if (Date.now() - lpFiredAt < 700 && !ev.target.closest("#ctxMenu")) {
+    ev.stopPropagation();
+    ev.preventDefault();
+  }
+}, true);
+
 document.addEventListener("click", (ev) => { if (!ev.target.closest("#ctxMenu")) hideCtx(); });
 document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") hideCtx(); });
 window.addEventListener("blur", hideCtx);
