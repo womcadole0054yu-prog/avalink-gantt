@@ -1,0 +1,10 @@
+{
+  "firestore": {
+    "rules": "firebase/firestore.rules"
+  },
+  "hosting": {
+    "site": "avalink-gantt",
+    "public": ".",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**", "firebase/**", "*.txt", "*.md"]
+  }
+}

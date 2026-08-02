@@ -228,6 +228,7 @@
   .f-cell.clickable { cursor: pointer; }
   .f-cell.clickable:hover { color: var(--accent); text-decoration: underline; }
   .f-cell.dim, .bar.dim, .ov-block.dim, .ov-chip.dim { opacity: 0.4; }
+  .group-cell.dim { opacity: 0.55; }
 
   .group-cell {
     position: sticky;
@@ -740,6 +741,11 @@
     <div class="form-row">
       <label id="groupLabel">名前</label>
       <input id="gName">
+    </div>
+    <div class="form-row">
+      <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:12.5px;margin-bottom:0;">
+        <input type="checkbox" id="gHidden" style="width:auto;"> まるごと非表示にする（👁ボタンで確認できる）
+      </label>
     </div>
     <div class="actions">
       <button class="btn danger spacer" id="gDelete">削除</button>
@@ -3846,7 +3852,13 @@ let viewMode = "day";        // "day" | "week"
 let projFilterId = "all";
 let showHidden = false;      // 非表示フェーズを一時的に見せるか
 let zoomPct = parseInt(localStorage.getItem("gantt-zoom") || "100", 10) || 100;
-const collapsed = new Set(); // 折りたたみ中の project/cycle id
+/* 折りたたみ状態は保存して、再読み込みしても維持する */
+const collapsed = new Set((() => {
+  try { return JSON.parse(localStorage.getItem("gantt-collapsed") || "[]"); } catch (e) { return []; }
+})());
+function saveCollapsed() {
+  try { localStorage.setItem("gantt-collapsed", JSON.stringify([...collapsed])); } catch (e) {}
+}
 
 const $ = (id) => document.getElementById(id);
 const parseDate = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
@@ -3979,10 +3991,10 @@ function renderGantt() {
   let row = headerRows + 1;
   const rowHeights = [];
 
-  const makeGroupRow = (kind, id, label, onAdd, onEdit) => {
+  const makeGroupRow = (kind, id, label, onAdd, onEdit, isHidden) => {
     const isCollapsed = collapsed.has(id);
     const cell = document.createElement("div");
-    cell.className = `group-cell ${kind}-cell` + (isCollapsed ? " collapsed" : "");
+    cell.className = `group-cell ${kind}-cell` + (isCollapsed ? " collapsed" : "") + (isHidden ? " dim" : "");
     cell.style.gridColumn = `1 / ${FIXED_COLS.length + 1}`;
     cell.style.gridRow = `${row}`;
     cell.style.left = "0px";
@@ -3993,7 +4005,7 @@ function renderGantt() {
     const lbl = document.createElement("span");
     lbl.className = "g-label";
     lbl.textContent = label;
-    const toggle = () => { isCollapsed ? collapsed.delete(id) : collapsed.add(id); render(); };
+    const toggle = () => { isCollapsed ? collapsed.delete(id) : collapsed.add(id); saveCollapsed(); render(); };
     tri.addEventListener("click", toggle);
     lbl.addEventListener("click", toggle);
 
@@ -4022,21 +4034,24 @@ function renderGantt() {
   };
 
   projects.forEach((project) => {
+    if (project.hidden && !showHidden) return;
     if (showProjectRows) {
       const c = makeGroupRow("project", project.id, `📁 ${project.name}`,
         () => openPhaseModal(null, project.id, null),
-        () => openGroupModal("project", project.id));
+        () => openGroupModal("project", project.id), project.hidden);
       if (c) return;
     }
     project.cycles.forEach((cycle) => {
+      if (cycle.hidden && !showHidden) return;
+      const groupHidden = !!(project.hidden || cycle.hidden);
       const c = makeGroupRow("cycle", cycle.id, cycle.name,
         () => openPhaseModal(null, project.id, cycle.id),
-        () => openGroupModal("cycle", cycle.id));
+        () => openGroupModal("cycle", cycle.id), groupHidden);
       if (c) return;
 
       cycle.phases.forEach((p) => {
-        if (p.hidden && !showHidden) return;
-        const dim = p.hidden ? " dim" : "";
+        if ((p.hidden || groupHidden) && !showHidden) return;
+        const dim = (p.hidden || groupHidden) ? " dim" : "";
         const s = parseDate(p.start), e = parseDate(p.end);
 
         const bg = document.createElement("div");
@@ -4127,7 +4142,7 @@ function renderGantt() {
 function renderOverview() {
   const gantt = $("gantt");
   gantt.innerHTML = "";
-  const projects = visibleProjects();
+  const projects = visibleProjects().filter(p => showHidden || !p.hidden);
   const range = computeRange(projects);
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const PROD_W = 170, REL_W = 130;
@@ -4208,12 +4223,14 @@ function renderOverview() {
   projects.forEach((pr, pi) => {
     const base = 2 + pi * 2;
     const items = [];
-    for (const cy of pr.cycles) for (const p of cy.phases) items.push({ p, cy });
+    for (const cy of pr.cycles) for (const p of cy.phases) {
+      items.push({ p, cy, ghost: !!(pr.hidden || cy.hidden) });
+    }
 
     const prod = [];
     for (const x of items) {
       if (isRelease(x.p)) continue;
-      if (x.p.hidden && !showHidden) continue;
+      if ((x.p.hidden || x.ghost) && !showHidden) continue;
       x.s = parseDate(x.p.start);
       x.e = parseDate(x.p.end);
       if (x.e < range.start || x.s > range.end) continue;
@@ -4242,7 +4259,7 @@ function renderOverview() {
 
     for (const x of prod) {
       const el = document.createElement("div");
-      el.className = "ov-block " + (x.p.status || "planned") + (x.p.hidden ? " dim" : "");
+      el.className = "ov-block " + (x.p.status || "planned") + ((x.p.hidden || x.ghost) ? " dim" : "");
       el.style.gridColumn = `${base}`;
       const r1 = Math.max(3, rowOf(x.s));
       const r2 = Math.min(3 + totalDays, rowOf(x.e) + 1);
@@ -4269,11 +4286,11 @@ function renderOverview() {
 
     for (const x of items) {
       if (!isRelease(x.p)) continue;
-      if (x.p.hidden && !showHidden) continue;
+      if ((x.p.hidden || x.ghost) && !showHidden) continue;
       const s = parseDate(x.p.start);
       if (s < range.start || s > range.end) continue;
       const el = document.createElement("div");
-      el.className = "ov-chip " + (x.p.status || "planned") + (x.p.hidden ? " dim" : "");
+      el.className = "ov-chip " + (x.p.status || "planned") + ((x.p.hidden || x.ghost) ? " dim" : "");
       el.style.gridColumn = `${base + 1}`;
       el.style.gridRow = `${rowOf(s)}`;
       el.textContent = x.p.name;
@@ -4537,6 +4554,7 @@ function openGroupModal(kind, id) {
   $("groupModalTitle").textContent = kind === "project" ? "プロジェクトを編集" : "サイクルを編集";
   $("groupLabel").textContent = kind === "project" ? "プロジェクト名" : "サイクル名";
   $("gName").value = obj.name;
+  $("gHidden").checked = !!obj.hidden;
   $("groupOverlay").classList.add("open");
   $("gName").focus();
 }
@@ -4551,7 +4569,7 @@ $("gSave").addEventListener("click", () => {
   const obj = editingGroup.kind === "project"
     ? state.projects.find(p => p.id === editingGroup.id)
     : state.projects.flatMap(p => p.cycles).find(c => c.id === editingGroup.id);
-  if (obj) obj.name = name;
+  if (obj) { obj.name = name; obj.hidden = $("gHidden").checked; }
   save();
   refreshProjFilter();
   closeGroupModal();
