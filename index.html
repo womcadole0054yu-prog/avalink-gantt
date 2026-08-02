@@ -558,13 +558,37 @@
   .hidden { display: none !important; }
 
   /* ---------- mobile ---------- */
+  /* タップ遅延（ダブルタップズーム待ち）をなくす */
+  .btn, .seg button, select.btn, .sum-chip, .icon-btn, .group-cell, .bar, .ov-block, .ov-chip, .summary-head {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #moreBtn { display: none; }
+  #moreMenu { display: contents; }
   @media (max-width: 640px) {
-    .toolbar { padding: 6px 8px; gap: 6px; }
-    .toolbar h1 { font-size: 13.5px; margin-right: 0; }
+    .toolbar { padding: 8px; gap: 7px; }
+    .toolbar h1 { display: none; }
     .legend { display: none; }
-    .btn { padding: 5px 9px; font-size: 12px; }
-    .seg button { padding: 5px 10px; font-size: 12px; }
+    /* 指で押せるサイズ（40px）に */
+    .btn, select.btn { min-height: 40px; padding: 8px 13px; font-size: 13px; }
+    .seg button { min-height: 40px; padding: 8px 14px; font-size: 13px; }
     .f-cell.status { justify-content: center; padding: 0 2px; }
+    #moreBtn { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; }
+    #moreMenu {
+      display: none;
+      position: fixed;
+      right: 8px;
+      z-index: 85;
+      background: var(--surface-1);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.28);
+      flex-direction: column;
+      gap: 8px;
+      align-items: stretch;
+    }
+    #moreMenu.open { display: flex; }
   }
 
   /* ---------- help ---------- */
@@ -679,12 +703,15 @@
     <button id="zoomLabel" disabled>100%</button>
     <button id="zoomIn">＋</button>
   </div>
-  <button class="btn" id="eyeBtn" title="非表示にしたフェーズを表示/隠す">👁 非表示分</button>
-  <button class="btn" id="themeBtn" title="テーマ切替">🌓</button>
-  <button class="btn" id="exportBtn" title="JSONで保存">⬇</button>
-  <button class="btn" id="importBtn" title="JSONを読み込み">⬆</button>
-  <span class="btn" id="syncBadge" style="cursor:default" title="同期状態">…</span>
-  <button class="btn" id="helpBtn" title="使い方">ヘルプ</button>
+  <button class="btn" id="moreBtn" title="その他">⋯</button>
+  <div id="moreMenu">
+    <button class="btn" id="eyeBtn" title="非表示にしたフェーズを表示/隠す">👁 非表示分</button>
+    <button class="btn" id="themeBtn" title="テーマ切替">🌓 テーマ</button>
+    <button class="btn" id="exportBtn" title="JSONで保存">⬇ 保存</button>
+    <button class="btn" id="importBtn" title="JSONを読み込み">⬆ 読み込み</button>
+    <span class="btn" id="syncBadge" style="cursor:default" title="同期状態">…</span>
+    <button class="btn" id="helpBtn" title="使い方">ヘルプ</button>
+  </div>
   <input type="file" id="importFile" accept=".json" class="hidden">
   <div class="legend">
     <span><i style="background:var(--bar-done)"></i>✅ 完了</span>
@@ -4872,6 +4899,28 @@ document.addEventListener("mousemove", (ev) => {
 });
 document.addEventListener("mouseout", (ev) => {
   if (ev.target.closest && ev.target.closest("[data-tt]")) tooltip.style.display = "none";
+});
+
+/* ============================================================
+ * ⋯メニュー（スマホ用）
+ * ============================================================ */
+$("moreBtn").addEventListener("click", (e) => {
+  e.stopPropagation();
+  const m = $("moreMenu");
+  const open = m.classList.toggle("open");
+  if (open) {
+    const r = $("moreBtn").getBoundingClientRect();
+    m.style.top = (r.bottom + 6) + "px";
+  }
+});
+document.addEventListener("click", (ev) => {
+  if (!ev.target.closest("#moreMenu") && !ev.target.closest("#moreBtn")) {
+    $("moreMenu").classList.remove("open");
+  }
+});
+/* メニュー内のボタンを押したら閉じる（同期バッジ以外） */
+$("moreMenu").addEventListener("click", (ev) => {
+  if (ev.target.closest("button")) $("moreMenu").classList.remove("open");
 });
 
 /* ============================================================
