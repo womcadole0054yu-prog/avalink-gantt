@@ -66,9 +66,11 @@
     color: var(--text-primary);
     font-size: 13.5px;
     height: 100vh;
+    height: 100dvh; /* iOS Safariのアドレスバー分を動的に反映（100vhだと上下がバーの裏に隠れる） */
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    overscroll-behavior: none;
   }
 
   /* ---------- toolbar ---------- */
