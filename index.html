@@ -1,0 +1,3133 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>制作スケジュール ガントチャート</title>
+<style>
+  :root {
+    color-scheme: light;
+    --surface-1: #ffffff;
+    --page: #eef1f6;
+    --text-primary: #14181f;
+    --text-secondary: #3f4652;
+    --text-muted: #6b7280;
+    --grid-line: #dfe3ea;
+    --axis-line: #aeb9c9;
+    --border: rgba(20,24,31,0.14);
+    --weekend-bg: rgba(70,110,180,0.06);
+    --today-line: #e03131;
+    --today-bg: rgba(224,49,49,0.07);
+    --cycle-bg: #dfeafa;
+    --project-bg: #274b77;
+    --project-ink: #ffffff;
+    --bar-done: #63b168;
+    --bar-active: #1e6fd0;
+    --bar-planned: #8fbdf2;
+    --hover-wash: rgba(30,111,208,0.07);
+    --accent: #1e6fd0;
+    --sun: #e03131;
+    --sat: #1971c2;
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --surface-1: #17181a;
+    --page: #0c0d0e;
+    --text-primary: #ffffff;
+    --text-secondary: #c9cdd4;
+    --text-muted: #8b919b;
+    --grid-line: #2b2e33;
+    --axis-line: #454a52;
+    --border: rgba(255,255,255,0.14);
+    --weekend-bg: rgba(120,160,220,0.08);
+    --today-line: #ff6b6b;
+    --today-bg: rgba(255,107,107,0.09);
+    --cycle-bg: #223349;
+    --project-bg: #2c4a73;
+    --project-ink: #ffffff;
+    --bar-done: #4e8f53;
+    --bar-active: #3b82e0;
+    --bar-planned: #35578a;
+    --hover-wash: rgba(59,130,224,0.12);
+    --accent: #3b82e0;
+    --sun: #ff6b6b;
+    --sat: #4dabf7;
+  }
+  /* デフォルトは白（ライト）。🌓ボタンで data-theme="dark" を付けたときだけダーク */
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Yu Gothic UI", sans-serif;
+    background: var(--page);
+    color: var(--text-primary);
+    font-size: 13.5px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ---------- toolbar ---------- */
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-1);
+    flex-shrink: 0;
+  }
+  .toolbar h1 { font-size: 16px; font-weight: 800; margin-right: 4px; letter-spacing: 0.01em; }
+  .seg {
+    display: inline-flex;
+    border: 1.5px solid var(--border);
+    border-radius: 7px;
+    overflow: hidden;
+  }
+  .seg button {
+    border: none;
+    background: transparent;
+    color: var(--text-primary);
+    padding: 6px 15px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .seg button.active {
+    background: var(--accent);
+    color: #fff;
+    font-weight: 700;
+  }
+  .seg button:disabled { cursor: default; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+  .btn {
+    border: 1.5px solid var(--border);
+    background: transparent;
+    color: var(--text-primary);
+    padding: 6px 13px;
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    white-space: nowrap;
+  }
+  .btn:hover { background: var(--hover-wash); }
+  .btn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    font-weight: 600;
+  }
+  .btn.danger { color: #d03b3b; border-color: rgba(208,59,59,0.4); }
+  select.btn { padding: 5px 8px; }
+  .legend {
+    display: flex;
+    gap: 12px;
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--text-secondary);
+    flex-wrap: wrap;
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .legend i { width: 14px; height: 10px; border-radius: 3px; display: inline-block; }
+
+  /* ---------- shared grid chrome ---------- */
+  .gantt-wrap {
+    flex: 1;
+    overflow: auto;
+    position: relative;
+    background: var(--surface-1);
+  }
+  .gantt {
+    display: grid;
+    width: max-content;
+    min-width: 100%;
+    position: relative;
+  }
+
+  .h-cell {
+    position: sticky;
+    background: var(--surface-1);
+    z-index: 20;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-bottom: 1px solid var(--grid-line);
+    border-right: 1px solid var(--grid-line);
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .h-month {
+    top: 0;
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--text-primary);
+    justify-content: flex-start;
+    padding-left: 8px;
+    height: 28px;
+    border-right: 1px solid var(--axis-line);
+    border-bottom: 2px solid var(--axis-line);
+  }
+  .h-day { height: 26px; }
+  .h-dow { height: 22px; font-size: 11px; color: var(--text-muted); }
+  .h-day.weekend, .h-dow.weekend { color: var(--sun); }
+  .h-day.sat, .h-dow.sat { color: var(--sat); }
+  .h-day.today, .h-dow.today { color: var(--today-line); font-weight: 800; }
+
+  .corner {
+    position: sticky;
+    left: 0;
+    z-index: 40;
+    background: var(--surface-1);
+    border-bottom: 1px solid var(--grid-line);
+    border-right: 1px solid var(--grid-line);
+    display: flex;
+    align-items: center;
+    padding-left: 10px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+  .corner.top { top: 0; }
+
+  .f-cell {
+    position: sticky;
+    z-index: 10;
+    background: var(--surface-1);
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    font-size: 13px;
+    font-weight: 500;
+    border-bottom: 1px solid var(--grid-line);
+    border-right: 1px solid var(--grid-line);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text-primary);
+  }
+  .f-cell.last { border-right: 1px solid var(--axis-line); }
+  .f-cell.num { justify-content: center; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+  .f-cell.status { font-size: 12px; }
+  .f-cell.clickable { cursor: pointer; }
+  .f-cell.clickable:hover { color: var(--accent); text-decoration: underline; }
+  .f-cell.dim, .bar.dim, .ov-block.dim, .ov-chip.dim { opacity: 0.4; }
+
+  .group-cell {
+    position: sticky;
+    z-index: 12;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 10px;
+    font-weight: 700;
+    border-bottom: 1px solid var(--grid-line);
+    white-space: nowrap;
+    user-select: none;
+  }
+  .group-cell .tri {
+    display: inline-block;
+    transition: transform .15s;
+    font-size: 10px;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+  .group-cell.collapsed .tri { transform: rotate(-90deg); }
+  .group-cell .g-label { cursor: pointer; }
+  .group-cell .icon-btn {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-size: 11px;
+    color: var(--text-muted);
+    padding: 2px 5px;
+    border-radius: 4px;
+    font-family: inherit;
+  }
+  .group-cell .icon-btn:hover { background: var(--hover-wash); color: var(--accent); }
+  .cycle-cell { background: var(--cycle-bg); font-size: 13px; font-weight: 700; }
+  .project-cell { background: var(--project-bg); color: var(--project-ink); font-size: 13.5px; font-weight: 800; }
+  .project-cell .tri { color: rgba(255,255,255,0.75); }
+  .project-cell .icon-btn { color: rgba(255,255,255,0.75); }
+  .project-cell .icon-btn:hover { background: rgba(255,255,255,0.18); color: #fff; }
+  .cycle-track { background: var(--cycle-bg); border-bottom: 1px solid var(--grid-line); z-index: 1; }
+  .project-track { background: var(--project-bg); border-bottom: 1px solid var(--grid-line); z-index: 1; }
+
+  .col-bg { z-index: 0; border-right: 1px solid var(--grid-line); }
+  .col-bg.weekend { background: var(--weekend-bg); }
+  .col-bg.month-start { border-left: 1px solid var(--axis-line); }
+  .col-bg.today { box-shadow: inset 2px 0 0 var(--today-line); }
+
+  .row-bg { z-index: 1; border-bottom: 1px solid var(--grid-line); }
+  .row-bg:hover { background: var(--hover-wash); }
+
+  .bar {
+    z-index: 5;
+    align-self: center;
+    height: 18px;
+    border-radius: 4px;
+    margin: 0 1px;
+    cursor: pointer;
+    position: relative;
+    min-width: 10px;
+  }
+  .bar:hover { filter: brightness(1.12); }
+  .bar.done    { background: var(--bar-done); }
+  .bar.active  { background: var(--bar-active); }
+  .bar.planned { background: var(--bar-planned); }
+  .bar.milestone {
+    height: 13px;
+    width: 13px;
+    min-width: 13px;
+    border-radius: 3px;
+    transform: rotate(45deg);
+    justify-self: center;
+    margin: 0;
+  }
+
+  .empty-hint {
+    padding: 40px;
+    color: var(--text-muted);
+    font-size: 13px;
+    text-align: center;
+    grid-column: 1 / -1;
+  }
+
+  /* ---------- overview (全体ページ) ---------- */
+  .ov-date {
+    position: sticky;
+    left: 0;
+    z-index: 10;
+    background: var(--surface-1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    border-bottom: 1px solid var(--grid-line);
+    border-right: 1px solid var(--axis-line);
+    color: var(--text-primary);
+  }
+  .ov-rowbg { z-index: 1; border-bottom: 1px solid var(--grid-line); }
+  .ov-rowbg.weekend { background: var(--weekend-bg); }
+  .ov-rowbg.today { background: var(--today-bg); }
+  .ov-rowbg.month-start { border-top: 1px solid var(--axis-line); }
+  .ov-date.month-start { border-top: 1px solid var(--axis-line); font-weight: 700; }
+  /* 日付列はスティッキーなので、透け防止に不透明な下地を重ねる */
+  .ov-date.weekend {
+    background: linear-gradient(var(--weekend-bg), var(--weekend-bg)), var(--surface-1);
+  }
+  .ov-date.today {
+    background: linear-gradient(var(--today-bg), var(--today-bg)), var(--surface-1);
+    font-weight: 700;
+  }
+  .ov-colsep { z-index: 0; border-right: 1px solid var(--grid-line); }
+  .ov-colsep.proj-end { border-right: 1px solid var(--axis-line); }
+
+  /* 制作フェーズの縦ブロック */
+  .ov-block {
+    z-index: 5;
+    border-radius: 4px;
+    margin: 1px 2px;
+    padding: 3px 7px;
+    font-size: 12px;
+    line-height: 1.4;
+    /* overflow:hidden を付けると内側の sticky ラベルが壊れるので付けない */
+    cursor: pointer;
+    min-width: 0;
+  }
+  .ov-block:hover { filter: brightness(1.08); }
+  .ov-block.done    { background: var(--bar-done); }
+  .ov-block.active  { background: var(--bar-active); color: #fff; }
+  .ov-block.planned { background: var(--bar-planned); }
+  .ov-block-label {
+    position: sticky;
+    top: 56px;
+    left: 96px; /* 日付列(90px)の右で止まって隠れないように */
+    display: block;
+    font-weight: 700;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ov-block-label .ov-owner {
+    display: block;
+    font-weight: 500;
+    font-size: 10.5px;
+    opacity: 0.85;
+  }
+
+  /* 公開チップ */
+  .ov-chip {
+    z-index: 5;
+    align-self: center;
+    justify-self: start;
+    margin: 0 3px;
+    padding: 2px 9px;
+    border-radius: 11px;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: calc(100% - 8px);
+  }
+  .ov-chip:hover { filter: brightness(1.08); }
+  .ov-chip.done    { background: var(--bar-done); }
+  .ov-chip.active  { background: var(--bar-active); color: #fff; }
+  .ov-chip.planned { background: var(--bar-planned); }
+  .ov-h-proj {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: var(--project-bg);
+    color: var(--project-ink);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 28px;
+    font-weight: 800;
+    font-size: 13px;
+    border-bottom: 1px solid var(--grid-line);
+    border-right: 1px solid var(--axis-line);
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .ov-h-sub {
+    position: sticky;
+    top: 28px;
+    z-index: 20;
+    background: var(--surface-1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 24px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--axis-line);
+    border-right: 1px solid var(--grid-line);
+  }
+  .ov-h-sub.proj-end { border-right: 1px solid var(--axis-line); }
+  .ov-corner {
+    position: sticky;
+    left: 0;
+    z-index: 40;
+    background: var(--surface-1);
+    border-bottom: 1px solid var(--axis-line);
+    border-right: 1px solid var(--axis-line);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+
+  /* ---------- modal ---------- */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 90;
+    display: none;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 8vh;
+  }
+  .overlay.open { display: flex; }
+  .modal {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+    width: min(420px, calc(100vw - 32px));
+    max-height: 84vh;
+    overflow-y: auto;
+    padding: 18px 20px;
+  }
+  .modal h2 { font-size: 14px; margin-bottom: 14px; }
+  .form-row { margin-bottom: 12px; }
+  .form-row label {
+    display: block;
+    font-size: 11.5px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+  }
+  .form-row .pair { display: flex; gap: 8px; }
+  .form-row .pair > * { flex: 1; }
+  .form-row input, .form-row select {
+    width: 100%;
+    padding: 7px 9px;
+    font-size: 13px;
+    font-family: inherit;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--page);
+    color: var(--text-primary);
+  }
+  .form-row input:focus, .form-row select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .modal .actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+    justify-content: flex-end;
+  }
+  .modal .actions .spacer { margin-right: auto; }
+  .hidden { display: none !important; }
+
+  /* ---------- context menu ---------- */
+  .ctx {
+    position: fixed;
+    z-index: 120;
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    box-shadow: 0 8px 28px rgba(0,0,0,0.25);
+    padding: 5px;
+    min-width: 180px;
+    display: none;
+  }
+  .ctx button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    text-align: left;
+    padding: 7px 11px;
+    border: none;
+    background: none;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    border-radius: 6px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .ctx button:hover { background: var(--hover-wash); }
+  .ctx button.danger { color: #d03b3b; }
+  .ctx hr { border: none; border-top: 1px solid var(--grid-line); margin: 4px 4px; }
+  .ctx .ctx-title {
+    padding: 5px 11px 3px;
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: 600;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ---------- tooltip ---------- */
+  .tooltip {
+    position: fixed;
+    z-index: 100;
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+    padding: 8px 12px;
+    font-size: 12px;
+    pointer-events: none;
+    display: none;
+    max-width: 280px;
+    line-height: 1.6;
+  }
+  .tooltip .tt-title { font-weight: 700; font-size: 12.5px; }
+  .tooltip .tt-sub { color: var(--text-secondary); }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <h1>📅 制作スケジュール</h1>
+  <div class="seg" id="pageSeg">
+    <button data-page="gantt" class="active">ガント</button>
+    <button data-page="overview">全体</button>
+  </div>
+  <div class="seg" id="viewSeg">
+    <button data-view="day" class="active">日</button>
+    <button data-view="week">週</button>
+  </div>
+  <select class="btn" id="projFilter" title="プロジェクト絞り込み"></select>
+  <button class="btn primary" id="addBtn">＋ 追加</button>
+  <button class="btn" id="todayBtn">今日へ</button>
+  <div class="seg" id="zoomSeg" title="拡大・縮小">
+    <button id="zoomOut">－</button>
+    <button id="zoomLabel" disabled>100%</button>
+    <button id="zoomIn">＋</button>
+  </div>
+  <button class="btn" id="eyeBtn" title="非表示にしたフェーズを表示/隠す">👁 非表示分</button>
+  <button class="btn" id="themeBtn" title="テーマ切替">🌓</button>
+  <button class="btn" id="exportBtn" title="JSONで保存">⬇</button>
+  <button class="btn" id="importBtn" title="JSONを読み込み">⬆</button>
+  <span class="btn" id="syncBadge" style="cursor:default" title="同期状態">…</span>
+  <input type="file" id="importFile" accept=".json" class="hidden">
+  <div class="legend">
+    <span><i style="background:var(--bar-done)"></i>✅ 完了</span>
+    <span><i style="background:var(--bar-active)"></i>🔄 進行中</span>
+    <span><i style="background:var(--bar-planned)"></i>⏳ 予定</span>
+  </div>
+</div>
+
+<div class="gantt-wrap" id="wrap">
+  <div class="gantt" id="gantt"></div>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<!-- 右クリックメニュー -->
+<div class="ctx" id="ctxMenu">
+  <div class="ctx-title" id="ctxTitle"></div>
+  <button id="ctxEdit">✏️ 編集</button>
+  <button id="ctxHide">🙈 非表示にする</button>
+  <hr>
+  <button id="ctxDone">✅ 完了にする</button>
+  <button id="ctxActive">🔄 進行中にする</button>
+  <button id="ctxPlanned">⏳ 予定にする</button>
+  <hr>
+  <button id="ctxDelete" class="danger">🗑 削除</button>
+</div>
+
+<!-- フェーズ追加/編集モーダル -->
+<div class="overlay" id="phaseOverlay">
+  <div class="modal">
+    <h2 id="phaseModalTitle">フェーズを追加</h2>
+    <div class="form-row">
+      <label>プロジェクト</label>
+      <select id="mProject"></select>
+      <input id="mProjectNew" class="hidden" style="margin-top:6px" placeholder="新しいプロジェクト名">
+    </div>
+    <div class="form-row">
+      <label>サイクル（グループ）</label>
+      <select id="mCycle"></select>
+      <input id="mCycleNew" class="hidden" style="margin-top:6px" placeholder="新しいサイクル名（例: AVA#38-43）">
+    </div>
+    <div class="form-row">
+      <label>フェーズ名（「公開」を含む名前は全体ページで公開列に出る）</label>
+      <input id="mName" placeholder="例: 台本執筆 / 公開 #32">
+    </div>
+    <div class="form-row">
+      <label>期間</label>
+      <div class="pair">
+        <input type="date" id="mStart">
+        <input type="date" id="mEnd">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="pair">
+        <div>
+          <label>担当</label>
+          <input id="mOwner" placeholder="例: 両社">
+        </div>
+        <div>
+          <label>状態</label>
+          <select id="mStatus">
+            <option value="planned">⏳ 予定</option>
+            <option value="active">🔄 進行中</option>
+            <option value="done">✅ 完了</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="form-row">
+      <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:12.5px;margin-bottom:0;">
+        <input type="checkbox" id="mHidden" style="width:auto;"> このフェーズを非表示にする（👁ボタンで確認できる）
+      </label>
+    </div>
+    <div class="actions">
+      <button class="btn danger spacer hidden" id="mDelete">削除</button>
+      <button class="btn" id="mCancel">キャンセル</button>
+      <button class="btn primary" id="mSave">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- グループ名変更/削除モーダル -->
+<div class="overlay" id="groupOverlay">
+  <div class="modal">
+    <h2 id="groupModalTitle">名前を変更</h2>
+    <div class="form-row">
+      <label id="groupLabel">名前</label>
+      <input id="gName">
+    </div>
+    <div class="actions">
+      <button class="btn danger spacer" id="gDelete">削除</button>
+      <button class="btn" id="gCancel">キャンセル</button>
+      <button class="btn primary" id="gSave">保存</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script>
+"use strict";
+
+/* ============================================================
+ * データ管理
+ *   projects → cycles → phases という3階層。
+ *   phases: { id, name, start:"YYYY-MM-DD", end, owner, status }
+ *   status: "done" | "active" | "planned"
+ *   保存先: localStorage（⬇/⬆ボタンでJSONの書き出し/読み込みも可）
+ * ============================================================ */
+const STORAGE_KEY = "seisaku-gantt-v2";
+
+const SAMPLE = {
+  "projects": [
+    {
+      "id": "p1",
+      "name": "AVAch",
+      "cycles": [
+        {
+          "id": "c1",
+          "name": "AVA#18-25",
+          "phases": [
+            {
+              "id": "f1",
+              "name": "台本会議",
+              "start": "2026-04-20",
+              "end": "2026-04-21",
+              "owner": "両社",
+              "status": "done"
+            },
+            {
+              "id": "f2",
+              "name": "台本執筆",
+              "start": "2026-04-23",
+              "end": "2026-04-30",
+              "owner": "劇団スカッシュ",
+              "status": "done"
+            },
+            {
+              "id": "f3",
+              "name": "準備",
+              "start": "2026-05-01",
+              "end": "2026-05-01",
+              "owner": "両社",
+              "status": "done"
+            },
+            {
+              "id": "f4",
+              "name": "撮影",
+              "start": "2026-05-11",
+              "end": "2026-05-12",
+              "owner": "両社",
+              "status": "done"
+            },
+            {
+              "id": "f5",
+              "name": "編集",
+              "start": "2026-05-13",
+              "end": "2026-05-25",
+              "owner": "劇団スカッシュ",
+              "status": "done"
+            },
+            {
+              "id": "f6",
+              "name": "公開 #18 電話",
+              "start": "2026-05-22",
+              "end": "2026-05-22",
+              "owner": "AVALINK",
+              "status": "done"
+            },
+            {
+              "id": "f7",
+              "name": "公開 #19 謝罪の仕方",
+              "start": "2026-05-29",
+              "end": "2026-05-29",
+              "owner": "AVALINK",
+              "status": "done"
+            },
+            {
+              "id": "f8",
+              "name": "公開 #20 新台入替前夜",
+              "start": "2026-06-05",
+              "end": "2026-06-05",
+              "owner": "AVALINK",
+              "status": "done"
+            },
+            {
+              "id": "f9",
+              "name": "公開 #21 スマートグラス",
+              "start": "2026-06-12",
+              "end": "2026-06-12",
+              "owner": "AVALINK",
+              "status": "done"
+            },
+            {
+              "id": "f10",
+              "name": "公開 #22 かちもり",
+              "start": "2026-06-19",
+              "end": "2026-06-19",
+              "owner": "AVALINK",
+              "status": "done"
+            },
+            {
+              "id": "f11",
+              "name": "公開 #23 インコース",
+              "start": "2026-06-26",
+              "end": "2026-06-26",
+              "owner": "AVALINK",
+              "status": "done"
+            },
+            {
+              "id": "f12",
+              "name": "公開 #24 トイレ",
+              "start": "2026-07-03",
+              "end": "2026-07-03",
+              "owner": "AVALINK",
+              "status": "done"
+            },
+            {
+              "id": "f13",
+              "name": "公開 #25 不倫",
+              "start": "2026-07-10",
+              "end": "2026-07-10",
+              "owner": "AVALINK",
+              "status": "done"
+            }
+          ]
+        },
+        {
+          "id": "c2",
+          "name": "AVA#26-31",
+          "phases": [
+            {
+              "id": "f14",
+              "name": "台本会議",
+              "start": "2026-05-25",
+              "end": "2026-05-29",
+              "owner": "両社",
+              "status": "done"
+            },
+            {
+              "id": "f15",
+              "name": "台本執筆",
+              "start": "2026-06-01",
+              "end": "2026-06-08",
+              "owner": "劇団スカッシュ",
+              "status": "done"
+            },
+            {
+              "id": "f16",
+              "name": "準備",
+              "start": "2026-06-09",
+              "end": "2026-06-16",
+              "owner": "両社",
+              "status": "done"
+            },
+            {
+              "id": "f17",
+              "name": "撮影",
+              "start": "2026-06-17",
+              "end": "2026-06-22",
+              "owner": "両社",
+              "status": "done"
+            },
+            {
+              "id": "f18",
+              "name": "編集",
+              "start": "2026-06-22",
+              "end": "2026-07-08",
+              "owner": "劇団スカッシュ",
+              "status": "done"
+            },
+            {
+              "id": "f19",
+              "name": "公開 #26 採用面接",
+              "start": "2026-07-17",
+              "end": "2026-07-17",
+              "owner": "AVALINK",
+              "status": "done"
+            },
+            {
+              "id": "f20",
+              "name": "公開 #27 1回だけ",
+              "start": "2026-07-24",
+              "end": "2026-07-24",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f21",
+              "name": "公開 #28 オーディション",
+              "start": "2026-07-31",
+              "end": "2026-07-31",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f22",
+              "name": "公開 #29 有利区間ロング",
+              "start": "2026-08-07",
+              "end": "2026-08-07",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f23",
+              "name": "公開 #30 もうやめる",
+              "start": "2026-08-14",
+              "end": "2026-08-14",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f24",
+              "name": "公開 #31 社風",
+              "start": "2026-08-25",
+              "end": "2026-08-25",
+              "owner": "AVALINK",
+              "status": "planned"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "AVA#32-37",
+          "phases": [
+            {
+              "id": "f25",
+              "name": "草案作成（妖怪ウォッチ、バスタード）",
+              "start": "2026-06-01",
+              "end": "2026-06-10",
+              "owner": "AVALINK",
+              "status": "done"
+            },
+            {
+              "id": "f26",
+              "name": "妖怪ウォッチ版元様確認資料提出",
+              "start": "2026-06-09",
+              "end": "2026-06-10",
+              "owner": "AVALINK",
+              "status": "active"
+            },
+            {
+              "id": "f27",
+              "name": "台本会議",
+              "start": "2026-06-30",
+              "end": "2026-07-01",
+              "owner": "両社",
+              "status": "done"
+            },
+            {
+              "id": "f28",
+              "name": "台本執筆",
+              "start": "2026-07-02",
+              "end": "2026-07-13",
+              "owner": "劇団スカッシュ",
+              "status": "active"
+            },
+            {
+              "id": "f29",
+              "name": "撮影準備(日程調整、撮影場所選定、小道具準備)",
+              "start": "2026-07-14",
+              "end": "2026-08-16",
+              "owner": "両社",
+              "status": "planned"
+            },
+            {
+              "id": "f30",
+              "name": "撮影日",
+              "start": "2026-08-17",
+              "end": "2026-08-19",
+              "owner": "両社",
+              "status": "planned"
+            },
+            {
+              "id": "f31",
+              "name": "編集(#32だけは8月25日予定)",
+              "start": "2026-08-20",
+              "end": "2026-09-03",
+              "owner": "劇団スカッシュ",
+              "status": "planned"
+            },
+            {
+              "id": "f32",
+              "name": "公開 #32",
+              "start": "2026-08-28",
+              "end": "2026-08-28",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f33",
+              "name": "公開 #33",
+              "start": "2026-09-04",
+              "end": "2026-09-04",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f34",
+              "name": "公開 #34",
+              "start": "2026-09-11",
+              "end": "2026-09-11",
+              "owner": "AVALINK",
+              "status": "planned"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "p2",
+      "name": "DROM",
+      "cycles": [
+        {
+          "id": "c4",
+          "name": "DROM#1-6",
+          "phases": [
+            {
+              "id": "f35",
+              "name": "台本会議",
+              "start": "2026-03-27",
+              "end": "2026-04-01",
+              "owner": "両社",
+              "status": "done"
+            },
+            {
+              "id": "f36",
+              "name": "台本執筆",
+              "start": "2026-04-06",
+              "end": "2026-04-10",
+              "owner": "劇団スカッシュ",
+              "status": "done"
+            },
+            {
+              "id": "f37",
+              "name": "準備",
+              "start": "2026-04-20",
+              "end": "2026-05-17",
+              "owner": "両社",
+              "status": "done"
+            },
+            {
+              "id": "f38",
+              "name": "撮影",
+              "start": "2026-05-18",
+              "end": "2026-05-19",
+              "owner": "両社",
+              "status": "done"
+            },
+            {
+              "id": "f39",
+              "name": "編集",
+              "start": "2026-05-20",
+              "end": "2026-06-05",
+              "owner": "劇団スカッシュ",
+              "status": "done"
+            },
+            {
+              "id": "f40",
+              "name": "公開 #1 何円まで耐えれますか？",
+              "start": "2026-06-28",
+              "end": "2026-06-28",
+              "owner": "AVALINK",
+              "status": "done"
+            },
+            {
+              "id": "f41",
+              "name": "公開 #2 ドストレートなPR",
+              "start": "2026-07-05",
+              "end": "2026-07-05",
+              "owner": "AVALINK",
+              "status": "done"
+            },
+            {
+              "id": "f42",
+              "name": "公開 #3",
+              "start": "2026-07-12",
+              "end": "2026-07-12",
+              "owner": "AVALINK",
+              "status": "done"
+            },
+            {
+              "id": "f43",
+              "name": "公開 #4",
+              "start": "2026-07-19",
+              "end": "2026-07-19",
+              "owner": "AVALINK",
+              "status": "done"
+            },
+            {
+              "id": "f44",
+              "name": "公開 #5",
+              "start": "2026-07-26",
+              "end": "2026-07-26",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f45",
+              "name": "公開 #6",
+              "start": "2026-08-02",
+              "end": "2026-08-02",
+              "owner": "AVALINK",
+              "status": "planned"
+            }
+          ]
+        },
+        {
+          "id": "c5",
+          "name": "DROM#7-12",
+          "phases": [
+            {
+              "id": "f46",
+              "name": "台本会議",
+              "start": "2026-07-02",
+              "end": "2026-07-03",
+              "owner": "両社",
+              "status": "planned"
+            },
+            {
+              "id": "f47",
+              "name": "台本執筆",
+              "start": "2026-07-04",
+              "end": "2026-07-13",
+              "owner": "劇団スカッシュ",
+              "status": "planned"
+            },
+            {
+              "id": "f48",
+              "name": "準備",
+              "start": "2026-07-14",
+              "end": "2026-07-21",
+              "owner": "両社",
+              "status": "planned"
+            },
+            {
+              "id": "f49",
+              "name": "撮影",
+              "start": "2026-07-22",
+              "end": "2026-07-23",
+              "owner": "両社",
+              "status": "planned"
+            },
+            {
+              "id": "f50",
+              "name": "編集",
+              "start": "2026-07-24",
+              "end": "2026-08-03",
+              "owner": "劇団スカッシュ",
+              "status": "planned"
+            },
+            {
+              "id": "f51",
+              "name": "公開 #7",
+              "start": "2026-08-09",
+              "end": "2026-08-09",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f52",
+              "name": "公開 #8",
+              "start": "2026-08-16",
+              "end": "2026-08-16",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f53",
+              "name": "公開 #9",
+              "start": "2026-08-23",
+              "end": "2026-08-23",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f54",
+              "name": "公開 #10",
+              "start": "2026-08-30",
+              "end": "2026-08-30",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f55",
+              "name": "公開 #11",
+              "start": "2026-09-06",
+              "end": "2026-09-06",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f56",
+              "name": "公開 #12",
+              "start": "2026-09-13",
+              "end": "2026-09-13",
+              "owner": "AVALINK",
+              "status": "planned"
+            }
+          ]
+        },
+        {
+          "id": "c6",
+          "name": "DROM#13-18",
+          "phases": [
+            {
+              "id": "f57",
+              "name": "台本会議",
+              "start": "2026-08-13",
+              "end": "2026-08-14",
+              "owner": "両社",
+              "status": "planned"
+            },
+            {
+              "id": "f58",
+              "name": "台本執筆",
+              "start": "2026-08-15",
+              "end": "2026-08-24",
+              "owner": "劇団スカッシュ",
+              "status": "planned"
+            },
+            {
+              "id": "f59",
+              "name": "準備",
+              "start": "2026-08-25",
+              "end": "2026-09-01",
+              "owner": "両社",
+              "status": "planned"
+            },
+            {
+              "id": "f60",
+              "name": "撮影",
+              "start": "2026-09-02",
+              "end": "2026-09-03",
+              "owner": "両社",
+              "status": "planned"
+            },
+            {
+              "id": "f61",
+              "name": "編集",
+              "start": "2026-09-04",
+              "end": "2026-09-14",
+              "owner": "劇団スカッシュ",
+              "status": "planned"
+            },
+            {
+              "id": "f62",
+              "name": "公開 #13",
+              "start": "2026-09-20",
+              "end": "2026-09-20",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f63",
+              "name": "公開 #14",
+              "start": "2026-09-27",
+              "end": "2026-09-27",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f64",
+              "name": "公開 #15",
+              "start": "2026-10-04",
+              "end": "2026-10-04",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f65",
+              "name": "公開 #16",
+              "start": "2026-10-11",
+              "end": "2026-10-11",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f66",
+              "name": "公開 #17",
+              "start": "2026-10-18",
+              "end": "2026-10-18",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f67",
+              "name": "公開 #18",
+              "start": "2026-10-25",
+              "end": "2026-10-25",
+              "owner": "AVALINK",
+              "status": "planned"
+            }
+          ]
+        },
+        {
+          "id": "c7",
+          "name": "DROM#19-24",
+          "phases": []
+        }
+      ]
+    },
+    {
+      "id": "p3",
+      "name": "サミー",
+      "cycles": [
+        {
+          "id": "c8",
+          "name": "Sammy#1-6",
+          "phases": [
+            {
+              "id": "f68",
+              "name": "初回ネタ",
+              "start": "2026-07-10",
+              "end": "2026-07-24",
+              "owner": "両社",
+              "status": "planned"
+            },
+            {
+              "id": "f69",
+              "name": "初回台本制作",
+              "start": "2026-07-27",
+              "end": "2026-07-31",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f70",
+              "name": "版元監修",
+              "start": "2026-08-03",
+              "end": "2026-08-26",
+              "owner": "両社",
+              "status": "planned"
+            },
+            {
+              "id": "f71",
+              "name": "台本会議",
+              "start": "2026-08-27",
+              "end": "2026-08-28",
+              "owner": "両社",
+              "status": "planned"
+            },
+            {
+              "id": "f72",
+              "name": "台本執筆",
+              "start": "2026-08-29",
+              "end": "2026-09-07",
+              "owner": "劇団スカッシュ",
+              "status": "planned"
+            },
+            {
+              "id": "f73",
+              "name": "準備",
+              "start": "2026-09-08",
+              "end": "2026-09-15",
+              "owner": "両社",
+              "status": "planned"
+            },
+            {
+              "id": "f74",
+              "name": "撮影",
+              "start": "2026-09-30",
+              "end": "2026-10-01",
+              "owner": "両社",
+              "status": "planned"
+            },
+            {
+              "id": "f75",
+              "name": "編集",
+              "start": "2026-10-02",
+              "end": "2026-10-12",
+              "owner": "劇団スカッシュ",
+              "status": "planned"
+            },
+            {
+              "id": "f76",
+              "name": "監修期間",
+              "start": "2026-10-12",
+              "end": "2026-10-26",
+              "owner": "劇団スカッシュ",
+              "status": "planned"
+            },
+            {
+              "id": "f77",
+              "name": "公開 #1",
+              "start": "2026-11-03",
+              "end": "2026-11-03",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f78",
+              "name": "公開 #2",
+              "start": "2026-11-13",
+              "end": "2026-11-13",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f79",
+              "name": "公開 #3",
+              "start": "2026-11-23",
+              "end": "2026-11-23",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f80",
+              "name": "公開 #4",
+              "start": "2026-12-03",
+              "end": "2026-12-03",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f81",
+              "name": "公開 #5",
+              "start": "2026-12-13",
+              "end": "2026-12-13",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f82",
+              "name": "公開 #6",
+              "start": "2026-12-23",
+              "end": "2026-12-23",
+              "owner": "AVALINK",
+              "status": "planned"
+            }
+          ]
+        },
+        {
+          "id": "c9",
+          "name": "Sammy#7-12",
+          "phases": [
+            {
+              "id": "f83",
+              "name": "ネタ考案",
+              "start": "2026-10-26",
+              "end": "2026-10-28",
+              "owner": "",
+              "status": "planned"
+            },
+            {
+              "id": "f84",
+              "name": "台本会議",
+              "start": "2026-10-29",
+              "end": "2026-10-30",
+              "owner": "両社",
+              "status": "planned"
+            },
+            {
+              "id": "f85",
+              "name": "台本執筆",
+              "start": "2026-10-31",
+              "end": "2026-11-09",
+              "owner": "劇団スカッシュ",
+              "status": "planned"
+            },
+            {
+              "id": "f86",
+              "name": "準備",
+              "start": "2026-11-10",
+              "end": "2026-11-17",
+              "owner": "両社",
+              "status": "planned"
+            },
+            {
+              "id": "f87",
+              "name": "撮影",
+              "start": "2026-11-18",
+              "end": "2026-11-19",
+              "owner": "両社",
+              "status": "planned"
+            },
+            {
+              "id": "f88",
+              "name": "編集",
+              "start": "2026-11-20",
+              "end": "2026-11-30",
+              "owner": "劇団スカッシュ",
+              "status": "planned"
+            },
+            {
+              "id": "f89",
+              "name": "監修期間",
+              "start": "2026-12-01",
+              "end": "2026-12-15",
+              "owner": "劇団スカッシュ",
+              "status": "planned"
+            },
+            {
+              "id": "f90",
+              "name": "公開 #7",
+              "start": "2027-01-03",
+              "end": "2027-01-03",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f91",
+              "name": "公開 #8",
+              "start": "2027-01-13",
+              "end": "2027-01-13",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f92",
+              "name": "公開 #9",
+              "start": "2027-01-23",
+              "end": "2027-01-23",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f93",
+              "name": "公開 #10",
+              "start": "2027-02-03",
+              "end": "2027-02-03",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f94",
+              "name": "公開 #11",
+              "start": "2027-02-13",
+              "end": "2027-02-13",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f95",
+              "name": "公開 #12",
+              "start": "2027-02-23",
+              "end": "2027-02-23",
+              "owner": "AVALINK",
+              "status": "planned"
+            }
+          ]
+        },
+        {
+          "id": "c10",
+          "name": "Sammy#13-18",
+          "phases": [
+            {
+              "id": "f96",
+              "name": "ネタ考案",
+              "start": "2027-01-04",
+              "end": "2027-01-06",
+              "owner": "",
+              "status": "planned"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "p4",
+      "name": "ボード",
+      "cycles": [
+        {
+          "id": "c11",
+          "name": "ボート#1-6",
+          "phases": [
+            {
+              "id": "f97",
+              "name": "ネタ考案",
+              "start": "2026-08-24",
+              "end": "2026-08-26",
+              "owner": "",
+              "status": "planned"
+            },
+            {
+              "id": "f98",
+              "name": "台本会議",
+              "start": "2026-08-27",
+              "end": "2026-08-28",
+              "owner": "両社",
+              "status": "planned"
+            },
+            {
+              "id": "f99",
+              "name": "台本執筆",
+              "start": "2026-08-29",
+              "end": "2026-09-07",
+              "owner": "劇団スカッシュ",
+              "status": "planned"
+            },
+            {
+              "id": "f100",
+              "name": "準備",
+              "start": "2026-09-08",
+              "end": "2026-09-15",
+              "owner": "両社",
+              "status": "planned"
+            },
+            {
+              "id": "f101",
+              "name": "撮影",
+              "start": "2026-09-16",
+              "end": "2026-09-17",
+              "owner": "両社",
+              "status": "planned"
+            },
+            {
+              "id": "f102",
+              "name": "編集",
+              "start": "2026-09-18",
+              "end": "2026-09-28",
+              "owner": "劇団スカッシュ",
+              "status": "planned"
+            },
+            {
+              "id": "f103",
+              "name": "公開 #1",
+              "start": "2026-10-02",
+              "end": "2026-10-02",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f104",
+              "name": "公開 #2",
+              "start": "2026-10-09",
+              "end": "2026-10-09",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f105",
+              "name": "公開 #3",
+              "start": "2026-10-16",
+              "end": "2026-10-16",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f106",
+              "name": "公開 #4",
+              "start": "2026-10-23",
+              "end": "2026-10-23",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f107",
+              "name": "公開 #5",
+              "start": "2026-10-30",
+              "end": "2026-10-30",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f108",
+              "name": "公開 #6",
+              "start": "2026-11-06",
+              "end": "2026-11-06",
+              "owner": "AVALINK",
+              "status": "planned"
+            }
+          ]
+        },
+        {
+          "id": "c12",
+          "name": "ボート#7-12",
+          "phases": [
+            {
+              "id": "f109",
+              "name": "ネタ考案",
+              "start": "2026-10-05",
+              "end": "2026-10-07",
+              "owner": "",
+              "status": "planned"
+            },
+            {
+              "id": "f110",
+              "name": "台本会議",
+              "start": "2026-10-08",
+              "end": "2026-10-09",
+              "owner": "両社",
+              "status": "planned"
+            },
+            {
+              "id": "f111",
+              "name": "台本執筆",
+              "start": "2026-10-10",
+              "end": "2026-10-19",
+              "owner": "劇団スカッシュ",
+              "status": "planned"
+            },
+            {
+              "id": "f112",
+              "name": "準備",
+              "start": "2026-10-20",
+              "end": "2026-10-27",
+              "owner": "両社",
+              "status": "planned"
+            },
+            {
+              "id": "f113",
+              "name": "撮影",
+              "start": "2026-10-28",
+              "end": "2026-10-29",
+              "owner": "両社",
+              "status": "planned"
+            },
+            {
+              "id": "f114",
+              "name": "編集",
+              "start": "2026-10-30",
+              "end": "2026-11-09",
+              "owner": "劇団スカッシュ",
+              "status": "planned"
+            },
+            {
+              "id": "f115",
+              "name": "公開 #7",
+              "start": "2026-11-13",
+              "end": "2026-11-13",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f116",
+              "name": "公開 #8",
+              "start": "2026-11-20",
+              "end": "2026-11-20",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f117",
+              "name": "公開 #9",
+              "start": "2026-11-27",
+              "end": "2026-11-27",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f118",
+              "name": "公開 #10",
+              "start": "2026-12-04",
+              "end": "2026-12-04",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f119",
+              "name": "公開 #11",
+              "start": "2026-12-11",
+              "end": "2026-12-11",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f120",
+              "name": "公開 #12",
+              "start": "2026-12-18",
+              "end": "2026-12-18",
+              "owner": "AVALINK",
+              "status": "planned"
+            }
+          ]
+        },
+        {
+          "id": "c13",
+          "name": "ボート#13-18",
+          "phases": [
+            {
+              "id": "f121",
+              "name": "ネタ考案",
+              "start": "2026-11-16",
+              "end": "2026-11-18",
+              "owner": "",
+              "status": "planned"
+            },
+            {
+              "id": "f122",
+              "name": "台本会議",
+              "start": "2026-11-19",
+              "end": "2026-11-20",
+              "owner": "両社",
+              "status": "planned"
+            },
+            {
+              "id": "f123",
+              "name": "台本執筆",
+              "start": "2026-11-21",
+              "end": "2026-11-30",
+              "owner": "劇団スカッシュ",
+              "status": "planned"
+            },
+            {
+              "id": "f124",
+              "name": "準備",
+              "start": "2026-12-01",
+              "end": "2026-12-08",
+              "owner": "両社",
+              "status": "planned"
+            },
+            {
+              "id": "f125",
+              "name": "撮影",
+              "start": "2026-12-09",
+              "end": "2026-12-10",
+              "owner": "両社",
+              "status": "planned"
+            },
+            {
+              "id": "f126",
+              "name": "編集",
+              "start": "2026-12-11",
+              "end": "2026-12-21",
+              "owner": "劇団スカッシュ",
+              "status": "planned"
+            },
+            {
+              "id": "f127",
+              "name": "公開 #13",
+              "start": "2026-12-25",
+              "end": "2026-12-25",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f128",
+              "name": "公開 #14",
+              "start": "2027-01-01",
+              "end": "2027-01-01",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f129",
+              "name": "公開 #15",
+              "start": "2027-01-08",
+              "end": "2027-01-08",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f130",
+              "name": "公開 #16",
+              "start": "2027-01-15",
+              "end": "2027-01-15",
+              "owner": "AVALINK",
+              "status": "planned"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "p5",
+      "name": "バルセロナ",
+      "cycles": [
+        {
+          "id": "c14",
+          "name": "バルセロナ#1-6",
+          "phases": [
+            {
+              "id": "f131",
+              "name": "ネタ考案",
+              "start": "2026-08-24",
+              "end": "2026-08-26",
+              "owner": "",
+              "status": "planned"
+            },
+            {
+              "id": "f132",
+              "name": "台本会議",
+              "start": "2026-08-27",
+              "end": "2026-08-28",
+              "owner": "両社",
+              "status": "planned"
+            },
+            {
+              "id": "f133",
+              "name": "台本執筆",
+              "start": "2026-08-29",
+              "end": "2026-09-07",
+              "owner": "劇団スカッシュ",
+              "status": "planned"
+            },
+            {
+              "id": "f134",
+              "name": "準備",
+              "start": "2026-09-08",
+              "end": "2026-09-15",
+              "owner": "両社",
+              "status": "planned"
+            },
+            {
+              "id": "f135",
+              "name": "撮影",
+              "start": "2026-09-16",
+              "end": "2026-09-17",
+              "owner": "両社",
+              "status": "planned"
+            },
+            {
+              "id": "f136",
+              "name": "編集",
+              "start": "2026-09-18",
+              "end": "2026-09-28",
+              "owner": "劇団スカッシュ",
+              "status": "planned"
+            },
+            {
+              "id": "f137",
+              "name": "公開 #1",
+              "start": "2026-10-02",
+              "end": "2026-10-02",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f138",
+              "name": "公開 #2",
+              "start": "2026-10-09",
+              "end": "2026-10-09",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f139",
+              "name": "公開 #3",
+              "start": "2026-10-16",
+              "end": "2026-10-16",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f140",
+              "name": "公開 #4",
+              "start": "2026-10-23",
+              "end": "2026-10-23",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f141",
+              "name": "公開 #5",
+              "start": "2026-10-30",
+              "end": "2026-10-30",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f142",
+              "name": "公開 #6",
+              "start": "2026-11-06",
+              "end": "2026-11-06",
+              "owner": "AVALINK",
+              "status": "planned"
+            }
+          ]
+        },
+        {
+          "id": "c15",
+          "name": "バルセロナ#7-12",
+          "phases": [
+            {
+              "id": "f143",
+              "name": "ネタ考案",
+              "start": "2026-10-05",
+              "end": "2026-10-07",
+              "owner": "",
+              "status": "planned"
+            },
+            {
+              "id": "f144",
+              "name": "台本会議",
+              "start": "2026-10-08",
+              "end": "2026-10-09",
+              "owner": "両社",
+              "status": "planned"
+            },
+            {
+              "id": "f145",
+              "name": "台本執筆",
+              "start": "2026-10-10",
+              "end": "2026-10-19",
+              "owner": "劇団スカッシュ",
+              "status": "planned"
+            },
+            {
+              "id": "f146",
+              "name": "準備",
+              "start": "2026-10-20",
+              "end": "2026-10-27",
+              "owner": "両社",
+              "status": "planned"
+            },
+            {
+              "id": "f147",
+              "name": "撮影",
+              "start": "2026-10-28",
+              "end": "2026-10-29",
+              "owner": "両社",
+              "status": "planned"
+            },
+            {
+              "id": "f148",
+              "name": "編集",
+              "start": "2026-10-30",
+              "end": "2026-11-09",
+              "owner": "劇団スカッシュ",
+              "status": "planned"
+            },
+            {
+              "id": "f149",
+              "name": "公開 #7",
+              "start": "2026-11-13",
+              "end": "2026-11-13",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f150",
+              "name": "公開 #8",
+              "start": "2026-11-20",
+              "end": "2026-11-20",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f151",
+              "name": "公開 #9",
+              "start": "2026-11-27",
+              "end": "2026-11-27",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f152",
+              "name": "公開 #10",
+              "start": "2026-12-04",
+              "end": "2026-12-04",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f153",
+              "name": "公開 #11",
+              "start": "2026-12-11",
+              "end": "2026-12-11",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f154",
+              "name": "公開 #12",
+              "start": "2026-12-18",
+              "end": "2026-12-18",
+              "owner": "AVALINK",
+              "status": "planned"
+            }
+          ]
+        },
+        {
+          "id": "c16",
+          "name": "バルセロナ#13-18",
+          "phases": [
+            {
+              "id": "f155",
+              "name": "ネタ考案",
+              "start": "2026-11-16",
+              "end": "2026-11-18",
+              "owner": "",
+              "status": "planned"
+            },
+            {
+              "id": "f156",
+              "name": "台本会議",
+              "start": "2026-11-19",
+              "end": "2026-11-20",
+              "owner": "両社",
+              "status": "planned"
+            },
+            {
+              "id": "f157",
+              "name": "台本執筆",
+              "start": "2026-11-21",
+              "end": "2026-11-30",
+              "owner": "劇団スカッシュ",
+              "status": "planned"
+            },
+            {
+              "id": "f158",
+              "name": "準備",
+              "start": "2026-12-01",
+              "end": "2026-12-08",
+              "owner": "両社",
+              "status": "planned"
+            },
+            {
+              "id": "f159",
+              "name": "撮影",
+              "start": "2026-12-09",
+              "end": "2026-12-10",
+              "owner": "両社",
+              "status": "planned"
+            },
+            {
+              "id": "f160",
+              "name": "編集",
+              "start": "2026-12-11",
+              "end": "2026-12-21",
+              "owner": "劇団スカッシュ",
+              "status": "planned"
+            },
+            {
+              "id": "f161",
+              "name": "公開 #13",
+              "start": "2026-12-25",
+              "end": "2026-12-25",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f162",
+              "name": "公開 #14",
+              "start": "2027-01-01",
+              "end": "2027-01-01",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f163",
+              "name": "公開 #15",
+              "start": "2027-01-08",
+              "end": "2027-01-08",
+              "owner": "AVALINK",
+              "status": "planned"
+            },
+            {
+              "id": "f164",
+              "name": "公開 #16",
+              "start": "2027-01-15",
+              "end": "2027-01-15",
+              "owner": "AVALINK",
+              "status": "planned"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+};
+
+let state = loadState();
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const s = JSON.parse(raw);
+      if (s && Array.isArray(s.projects)) return s;
+    }
+  } catch (e) { /* 壊れていたらサンプルに戻す */ }
+  return JSON.parse(JSON.stringify(SAMPLE));
+}
+function save() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (e) {
+    /* 保存がブロックされる環境（プライベートモード等）でも編集自体は続けられるようにする */
+    console.warn("保存できなかった:", e);
+  }
+  cloudPush();
+}
+
+/* ============================================================
+ * Firebase 同期（GitHub Pages版で有効）
+ *   Firestoreの gantt/state に全データをJSONで保存し、
+ *   誰かが編集すると開いている全員に即反映される。
+ *   file:// や Artifact などSDKが読めない環境では自動で
+ *   「この端末のみ」モード（localStorageだけ）になる。
+ * ============================================================ */
+let cloud = null;
+let cloudTimer = null;
+let firstSyncDone = false;
+
+function setSync(mode) {
+  const b = document.getElementById("syncBadge");
+  if (!b) return;
+  const map = { sync: "☁️ 同期OK", saving: "☁️ 保存中…", offline: "⚠️ オフライン", local: "💾 この端末のみ" };
+  b.textContent = map[mode] || mode;
+}
+
+function initCloud() {
+  if (typeof firebase === "undefined") { setSync("local"); return; }
+  try {
+    firebase.initializeApp({
+      apiKey: "AIzaSyB6lzTulB1ojHKHsToVVzo_fQjOknfDSAY",
+      authDomain: "slot-judge.firebaseapp.com",
+      projectId: "slot-judge",
+      storageBucket: "slot-judge.firebasestorage.app",
+      messagingSenderId: "169178610037",
+      appId: "1:169178610037:web:13dd264f171c80249a3b3c",
+    });
+    cloud = firebase.firestore().collection("gantt").doc("state");
+    cloud.onSnapshot((snap) => {
+      if (!snap.exists) { cloudPush(); return; }
+      const j = (snap.data() || {}).json;
+      if (typeof j !== "string" || j === JSON.stringify(state)) { setSync("sync"); return; }
+      try {
+        const s = JSON.parse(j);
+        if (s && Array.isArray(s.projects)) {
+          state = s;
+          try { localStorage.setItem(STORAGE_KEY, j); } catch (e) {}
+          refreshProjFilter();
+          render();
+          if (!firstSyncDone) { firstSyncDone = true; scrollToToday(); }
+        }
+      } catch (e) {}
+      setSync("sync");
+    }, () => setSync("offline"));
+  } catch (e) { setSync("local"); }
+}
+
+function cloudPush() {
+  if (!cloud) return;
+  setSync("saving");
+  clearTimeout(cloudTimer);
+  cloudTimer = setTimeout(() => {
+    cloud.set({ json: JSON.stringify(state), updatedAt: firebase.firestore.FieldValue.serverTimestamp() })
+      .then(() => setSync("sync"))
+      .catch(() => setSync("offline"));
+  }, 400);
+}
+function uid() {
+  return "x" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+
+/* ============================================================
+ * 共通ヘルパー
+ * ============================================================ */
+const STATUS_LABEL = { done: "✅完了", active: "🔄進行中", planned: "⏳予定" };
+const DOW = ["日", "月", "火", "水", "木", "金", "土"];
+const FIXED_COLS = [
+  { label: "サイクル", width: 110 },
+  { label: "フェーズ", width: 200 },
+  { label: "開始日",   width: 58 },
+  { label: "終了日",   width: 58 },
+  { label: "担当",     width: 100 },
+  { label: "状態",     width: 80 },
+];
+const DAY_W = 28;
+const WEEK_W = 72;
+
+let currentPage = "gantt";   // "gantt" | "overview"
+let viewMode = "day";        // "day" | "week"
+let projFilterId = "all";
+let showHidden = false;      // 非表示フェーズを一時的に見せるか
+let zoomPct = parseInt(localStorage.getItem("gantt-zoom") || "100", 10) || 100;
+const collapsed = new Set(); // 折りたたみ中の project/cycle id
+
+const $ = (id) => document.getElementById(id);
+const parseDate = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
+const fmtMD = (d) => `${d.getMonth() + 1}/${d.getDate()}`;
+const fmtISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const addDays = (d, n) => { const r = new Date(d); r.setDate(r.getDate() + n); return r; };
+const sameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+const isRelease = (p) => p.name.includes("公開");
+
+function visibleProjects() {
+  return projFilterId === "all" ? state.projects : state.projects.filter(p => p.id === projFilterId);
+}
+function allPhases(projects) {
+  const out = [];
+  for (const pr of projects) for (const c of pr.cycles) for (const p of c.phases) out.push(p);
+  return out;
+}
+function computeRange(projects) {
+  let min = null, max = null;
+  for (const p of allPhases(projects)) {
+    const s = parseDate(p.start), e = parseDate(p.end);
+    if (!min || s < min) min = s;
+    if (!max || e > max) max = e;
+  }
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  if (!min) { min = addDays(today, -7); max = addDays(today, 60); }
+  return { start: addDays(min, -7), end: addDays(max, 14) };
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+}
+
+/* ============================================================
+ * ガントページ
+ * ============================================================ */
+function buildAxis(range) {
+  const cols = [];
+  if (viewMode === "day") {
+    for (let d = new Date(range.start); d <= range.end; d = addDays(d, 1)) {
+      cols.push({ start: new Date(d), end: new Date(d) });
+    }
+  } else {
+    for (let d = new Date(range.start); d <= range.end; d = addDays(d, 7)) {
+      cols.push({ start: new Date(d), end: addDays(d, 6) });
+    }
+  }
+  return cols;
+}
+function colIndexOf(cols, date) {
+  if (date < cols[0].start) return 0;
+  for (let i = 0; i < cols.length; i++) {
+    if (date >= cols[i].start && date <= cols[i].end) return i;
+  }
+  return cols.length - 1;
+}
+
+function renderGantt() {
+  const gantt = $("gantt");
+  gantt.innerHTML = "";
+  const projects = visibleProjects();
+  const range = computeRange(projects);
+  const cols = buildAxis(range);
+  const colW = viewMode === "day" ? DAY_W : WEEK_W;
+  const headerRows = viewMode === "day" ? 3 : 2;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const showProjectRows = projFilterId === "all" && state.projects.length > 1;
+
+  gantt.style.gridTemplateColumns =
+    FIXED_COLS.map(c => c.width + "px").join(" ") + ` repeat(${cols.length}, ${colW}px)`;
+
+  const frag = document.createDocumentFragment();
+
+  /* corner */
+  let leftOffset = 0;
+  FIXED_COLS.forEach((c, i) => {
+    const el = document.createElement("div");
+    el.className = "corner top";
+    el.style.gridColumn = `${i + 1}`;
+    el.style.gridRow = `1 / ${headerRows + 1}`;
+    el.style.left = leftOffset + "px";
+    if (i === FIXED_COLS.length - 1) el.style.borderRight = "1px solid var(--axis-line)";
+    el.textContent = c.label;
+    frag.appendChild(el);
+    leftOffset += c.width;
+  });
+
+  /* 月ヘッダー */
+  let mStart = 0;
+  for (let i = 1; i <= cols.length; i++) {
+    const prev = cols[i - 1], cur = cols[i];
+    if (!cur || cur.start.getMonth() !== prev.start.getMonth()) {
+      const el = document.createElement("div");
+      el.className = "h-cell h-month";
+      el.style.gridColumn = `${FIXED_COLS.length + 1 + mStart} / ${FIXED_COLS.length + 1 + i}`;
+      el.style.gridRow = "1";
+      const d = cols[mStart].start;
+      el.textContent = `${d.getFullYear()}/${d.getMonth() + 1}`;
+      frag.appendChild(el);
+      mStart = i;
+    }
+  }
+
+  /* 日付・曜日ヘッダー */
+  cols.forEach((c, i) => {
+    const dow = c.start.getDay();
+    const isToday = viewMode === "day" ? sameDay(c.start, today) : (today >= c.start && today <= c.end);
+    const el = document.createElement("div");
+    el.className = "h-cell h-day" +
+      (viewMode === "day" && dow === 0 ? " weekend" : "") +
+      (viewMode === "day" && dow === 6 ? " sat" : "") +
+      (isToday ? " today" : "");
+    el.style.gridColumn = `${FIXED_COLS.length + 1 + i}`;
+    el.style.gridRow = "2";
+    el.style.top = "28px";
+    el.textContent = viewMode === "day" ? fmtMD(c.start) : `${fmtMD(c.start)}〜`;
+    frag.appendChild(el);
+    if (viewMode === "day") {
+      const el2 = document.createElement("div");
+      el2.className = "h-cell h-dow" +
+        (dow === 0 ? " weekend" : "") + (dow === 6 ? " sat" : "") + (isToday ? " today" : "");
+      el2.style.gridColumn = `${FIXED_COLS.length + 1 + i}`;
+      el2.style.gridRow = "3";
+      el2.style.top = "54px";
+      el2.textContent = DOW[dow];
+      frag.appendChild(el2);
+    }
+  });
+
+  /* 行 */
+  let row = headerRows + 1;
+  const rowHeights = [];
+
+  const makeGroupRow = (kind, id, label, onAdd, onEdit) => {
+    const isCollapsed = collapsed.has(id);
+    const cell = document.createElement("div");
+    cell.className = `group-cell ${kind}-cell` + (isCollapsed ? " collapsed" : "");
+    cell.style.gridColumn = `1 / ${FIXED_COLS.length + 1}`;
+    cell.style.gridRow = `${row}`;
+    cell.style.left = "0px";
+
+    const tri = document.createElement("span");
+    tri.className = "tri";
+    tri.textContent = "▼";
+    const lbl = document.createElement("span");
+    lbl.className = "g-label";
+    lbl.textContent = label;
+    const toggle = () => { isCollapsed ? collapsed.delete(id) : collapsed.add(id); render(); };
+    tri.addEventListener("click", toggle);
+    lbl.addEventListener("click", toggle);
+
+    const addB = document.createElement("button");
+    addB.className = "icon-btn";
+    addB.textContent = "＋";
+    addB.title = "フェーズを追加";
+    addB.addEventListener("click", (e) => { e.stopPropagation(); onAdd(); });
+    const editB = document.createElement("button");
+    editB.className = "icon-btn";
+    editB.textContent = "✏️";
+    editB.title = "名前の変更 / 削除";
+    editB.addEventListener("click", (e) => { e.stopPropagation(); onEdit(); });
+
+    cell.append(tri, lbl, addB, editB);
+    frag.appendChild(cell);
+
+    const track = document.createElement("div");
+    track.className = `${kind}-track`;
+    track.style.gridColumn = `${FIXED_COLS.length + 1} / -1`;
+    track.style.gridRow = `${row}`;
+    frag.appendChild(track);
+    rowHeights.push(kind === "project" ? "34px" : "32px");
+    row++;
+    return isCollapsed;
+  };
+
+  projects.forEach((project) => {
+    if (showProjectRows) {
+      const c = makeGroupRow("project", project.id, `📁 ${project.name}`,
+        () => openPhaseModal(null, project.id, null),
+        () => openGroupModal("project", project.id));
+      if (c) return;
+    }
+    project.cycles.forEach((cycle) => {
+      const c = makeGroupRow("cycle", cycle.id, cycle.name,
+        () => openPhaseModal(null, project.id, cycle.id),
+        () => openGroupModal("cycle", cycle.id));
+      if (c) return;
+
+      cycle.phases.forEach((p) => {
+        if (p.hidden && !showHidden) return;
+        const dim = p.hidden ? " dim" : "";
+        const s = parseDate(p.start), e = parseDate(p.end);
+
+        const bg = document.createElement("div");
+        bg.className = "row-bg";
+        bg.style.gridColumn = `1 / -1`;
+        bg.style.gridRow = `${row}`;
+        bg.dataset.pid = p.id;
+        frag.appendChild(bg);
+
+        const values = ["", p.name, fmtMD(s), fmtMD(e), p.owner || "", STATUS_LABEL[p.status] || ""];
+        const focusIds = [null, "mName", "mStart", "mEnd", "mOwner", "mStatus"];
+        let off = 0;
+        FIXED_COLS.forEach((c2, i) => {
+          const el = document.createElement("div");
+          el.className = "f-cell" + dim +
+            (i === FIXED_COLS.length - 1 ? " last status" : "") +
+            (i === 2 || i === 3 ? " num" : "") +
+            (i >= 1 ? " clickable" : "");
+          el.style.gridColumn = `${i + 1}`;
+          el.style.gridRow = `${row}`;
+          el.style.left = off + "px";
+          el.textContent = values[i];
+          el.dataset.pid = p.id;
+          if (i >= 1) {
+            el.title = "クリックで編集";
+            el.addEventListener("click", () => openPhaseModal(p.id, project.id, cycle.id, focusIds[i]));
+          }
+          frag.appendChild(el);
+          off += c2.width;
+        });
+
+        const c1 = colIndexOf(cols, s), c2i = colIndexOf(cols, e);
+        const bar = document.createElement("div");
+        const isMilestone = viewMode === "day" && sameDay(s, e);
+        bar.className = "bar " + (p.status || "planned") + (isMilestone ? " milestone" : "") + dim;
+        bar.style.gridColumn = `${FIXED_COLS.length + 1 + c1} / ${FIXED_COLS.length + 2 + c2i}`;
+        bar.style.gridRow = `${row}`;
+        bar.dataset.pid = p.id;
+        bar.dataset.tt = JSON.stringify({
+          title: p.name,
+          cycle: `${project.name} / ${cycle.name}`,
+          period: `${fmtMD(s)} 〜 ${fmtMD(e)}`,
+          owner: p.owner || "-",
+          status: STATUS_LABEL[p.status] || "-",
+        });
+        bar.addEventListener("click", () => openPhaseModal(p.id, project.id, cycle.id));
+        frag.appendChild(bar);
+
+        rowHeights.push("30px");
+        row++;
+      });
+    });
+  });
+
+  /* 列背景 */
+  cols.forEach((c, i) => {
+    const dow = c.start.getDay();
+    const isToday = viewMode === "day" ? sameDay(c.start, today) : (today >= c.start && today <= c.end);
+    const isMonthStart = i > 0 && c.start.getMonth() !== cols[i - 1].start.getMonth();
+    const el = document.createElement("div");
+    el.className = "col-bg" +
+      (viewMode === "day" && (dow === 0 || dow === 6) ? " weekend" : "") +
+      (isMonthStart ? " month-start" : "") +
+      (isToday ? " today" : "");
+    el.style.gridColumn = `${FIXED_COLS.length + 1 + i}`;
+    el.style.gridRow = `${headerRows + 1} / ${row}`;
+    frag.appendChild(el);
+  });
+
+  if (rowHeights.length === 0) {
+    const hint = document.createElement("div");
+    hint.className = "empty-hint";
+    hint.style.gridRow = `${headerRows + 1}`;
+    hint.textContent = "まだ何もないよ。「＋ 追加」から最初のフェーズを入れてね";
+    frag.appendChild(hint);
+    rowHeights.push("120px");
+  }
+
+  const headerTemplate = viewMode === "day" ? "28px 26px 22px" : "28px 26px";
+  gantt.style.gridTemplateRows = headerTemplate + " " + rowHeights.join(" ");
+  gantt.appendChild(frag);
+}
+
+/* ============================================================
+ * 全体ページ（日付 × プロジェクト。スプレッドの全体シートと同じ形）
+ * ============================================================ */
+function renderOverview() {
+  const gantt = $("gantt");
+  gantt.innerHTML = "";
+  const projects = visibleProjects();
+  const range = computeRange(projects);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const PROD_W = 170, REL_W = 130;
+  const totalDays = Math.round((range.end - range.start) / 86400000) + 1;
+  const rowOf = (d) => 3 + Math.round((d - range.start) / 86400000);
+
+  gantt.style.gridTemplateColumns =
+    "90px " + projects.map(() => `${PROD_W}px ${REL_W}px`).join(" ");
+  gantt.style.gridTemplateRows = `28px 24px repeat(${totalDays}, 26px)`;
+
+  const frag = document.createDocumentFragment();
+
+  /* corner + ヘッダー */
+  const corner = document.createElement("div");
+  corner.className = "ov-corner";
+  corner.style.gridColumn = "1";
+  corner.style.gridRow = "1 / 3";
+  corner.style.top = "0";
+  corner.textContent = "日付";
+  frag.appendChild(corner);
+
+  projects.forEach((pr, pi) => {
+    const base = 2 + pi * 2;
+    const h = document.createElement("div");
+    h.className = "ov-h-proj";
+    h.style.gridColumn = `${base} / ${base + 2}`;
+    h.style.gridRow = "1";
+    h.textContent = pr.name;
+    frag.appendChild(h);
+    ["制作", "公開"].forEach((label, ci) => {
+      const s = document.createElement("div");
+      s.className = "ov-h-sub" + (ci === 1 ? " proj-end" : "");
+      s.style.gridColumn = `${base + ci}`;
+      s.style.gridRow = "2";
+      s.textContent = label;
+      frag.appendChild(s);
+    });
+  });
+
+  /* 日付列 + 行背景 */
+  for (let i = 0; i < totalDays; i++) {
+    const d = addDays(range.start, i);
+    const dow = d.getDay();
+    const cls =
+      (dow === 0 || dow === 6 ? " weekend" : "") +
+      (sameDay(d, today) ? " today" : "") +
+      (d.getDate() === 1 ? " month-start" : "");
+
+    const dc = document.createElement("div");
+    dc.className = "ov-date" + cls;
+    dc.style.gridColumn = "1";
+    dc.style.gridRow = `${3 + i}`;
+    dc.textContent = (d.getDate() === 1 ? `${d.getMonth() + 1}月 ` : "") + `${fmtMD(d)} (${DOW[dow]})`;
+    if (dow === 0) dc.style.color = "#d03b3b";
+    if (dow === 6) dc.style.color = "#2a78d6";
+    frag.appendChild(dc);
+
+    const bg = document.createElement("div");
+    bg.className = "ov-rowbg" + cls;
+    bg.style.gridColumn = "2 / -1";
+    bg.style.gridRow = `${3 + i}`;
+    frag.appendChild(bg);
+  }
+
+  /* 列の縦線 */
+  projects.forEach((pr, pi) => {
+    const base = 2 + pi * 2;
+    [0, 1].forEach((ci) => {
+      const el = document.createElement("div");
+      el.className = "ov-colsep" + (ci === 1 ? " proj-end" : "");
+      el.style.gridColumn = `${base + ci}`;
+      el.style.gridRow = `3 / ${3 + totalDays}`;
+      frag.appendChild(el);
+    });
+  });
+
+  /* フェーズブロックと公開チップ */
+  projects.forEach((pr, pi) => {
+    const base = 2 + pi * 2;
+    const items = [];
+    for (const cy of pr.cycles) for (const p of cy.phases) items.push({ p, cy });
+
+    const prod = [];
+    for (const x of items) {
+      if (isRelease(x.p)) continue;
+      if (x.p.hidden && !showHidden) continue;
+      x.s = parseDate(x.p.start);
+      x.e = parseDate(x.p.end);
+      if (x.e < range.start || x.s > range.end) continue;
+      prod.push(x);
+    }
+    prod.sort((a, b) => a.s - b.s || a.e - b.e);
+
+    /* 期間が重なるブロックはレーン分割して横に並べる */
+    let cluster = [], clusterEnd = null;
+    const clusters = [];
+    for (const x of prod) {
+      if (cluster.length && x.s > clusterEnd) { clusters.push(cluster); cluster = []; clusterEnd = null; }
+      cluster.push(x);
+      if (!clusterEnd || x.e > clusterEnd) clusterEnd = x.e;
+    }
+    if (cluster.length) clusters.push(cluster);
+    for (const cl of clusters) {
+      const laneEnds = [];
+      for (const x of cl) {
+        let li = laneEnds.findIndex((end) => end < x.s);
+        if (li < 0) { li = laneEnds.length; laneEnds.push(x.e); } else laneEnds[li] = x.e;
+        x.lane = li;
+      }
+      for (const x of cl) x.laneCount = laneEnds.length;
+    }
+
+    for (const x of prod) {
+      const el = document.createElement("div");
+      el.className = "ov-block " + (x.p.status || "planned") + (x.p.hidden ? " dim" : "");
+      el.style.gridColumn = `${base}`;
+      const r1 = Math.max(3, rowOf(x.s));
+      const r2 = Math.min(3 + totalDays, rowOf(x.e) + 1);
+      el.style.gridRow = `${r1} / ${r2}`;
+      if (x.laneCount > 1) {
+        el.style.width = `calc(${100 / x.laneCount}% - 4px)`;
+        el.style.marginLeft = `calc(${(100 * x.lane) / x.laneCount}% + 2px)`;
+      }
+      el.innerHTML =
+        `<span class="ov-block-label">${escapeHtml(x.p.name)}` +
+        (x.p.owner ? `<span class="ov-owner">${escapeHtml(x.p.owner)}</span>` : "") +
+        `</span>`;
+      el.dataset.pid = x.p.id;
+      el.dataset.tt = JSON.stringify({
+        title: x.p.name,
+        cycle: `${pr.name} / ${x.cy.name}`,
+        period: `${fmtMD(x.s)} 〜 ${fmtMD(x.e)}`,
+        owner: x.p.owner || "-",
+        status: STATUS_LABEL[x.p.status] || "-",
+      });
+      el.addEventListener("click", () => openPhaseModal(x.p.id, pr.id, x.cy.id));
+      frag.appendChild(el);
+    }
+
+    for (const x of items) {
+      if (!isRelease(x.p)) continue;
+      if (x.p.hidden && !showHidden) continue;
+      const s = parseDate(x.p.start);
+      if (s < range.start || s > range.end) continue;
+      const el = document.createElement("div");
+      el.className = "ov-chip " + (x.p.status || "planned") + (x.p.hidden ? " dim" : "");
+      el.style.gridColumn = `${base + 1}`;
+      el.style.gridRow = `${rowOf(s)}`;
+      el.textContent = x.p.name;
+      el.dataset.pid = x.p.id;
+      el.dataset.tt = JSON.stringify({
+        title: x.p.name,
+        cycle: `${pr.name} / ${x.cy.name}`,
+        period: fmtMD(s),
+        owner: x.p.owner || "-",
+        status: STATUS_LABEL[x.p.status] || "-",
+      });
+      el.addEventListener("click", () => openPhaseModal(x.p.id, pr.id, x.cy.id));
+      frag.appendChild(el);
+    }
+  });
+
+  gantt.appendChild(frag);
+}
+
+/* ============================================================
+ * 描画の入り口
+ * ============================================================ */
+function render() {
+  $("viewSeg").style.display = currentPage === "gantt" ? "" : "none";
+  if (currentPage === "gantt") renderGantt();
+  else renderOverview();
+}
+
+function scrollToToday() {
+  const z = zoomPct / 100;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const projects = visibleProjects();
+  const range = computeRange(projects);
+  if (currentPage === "gantt") {
+    if (today < range.start || today > range.end) return;
+    const cols = buildAxis(range);
+    const idx = colIndexOf(cols, today);
+    const colW = viewMode === "day" ? DAY_W : WEEK_W;
+    const fixedTotal = FIXED_COLS.reduce((a, c) => a + c.width, 0);
+    $("wrap").scrollLeft = idx * colW * z - ($("wrap").clientWidth - fixedTotal * z) / 2;
+  } else {
+    const days = Math.round((today - range.start) / 86400000);
+    if (days < 0) return;
+    $("wrap").scrollTop = (52 + days * 26) * z - $("wrap").clientHeight / 2;
+  }
+}
+
+/* ---- 拡大・縮小 ---- */
+function applyZoom() {
+  zoomPct = Math.max(60, Math.min(160, zoomPct));
+  $("gantt").style.zoom = zoomPct + "%";
+  $("zoomLabel").textContent = zoomPct + "%";
+  try { localStorage.setItem("gantt-zoom", String(zoomPct)); } catch (e) {}
+}
+$("zoomIn").addEventListener("click", () => { zoomPct += 10; applyZoom(); });
+$("zoomOut").addEventListener("click", () => { zoomPct -= 10; applyZoom(); });
+
+/* ---- 非表示フェーズの一時表示 ---- */
+$("eyeBtn").addEventListener("click", () => {
+  showHidden = !showHidden;
+  $("eyeBtn").classList.toggle("on", showHidden);
+  render();
+});
+
+/* ============================================================
+ * プロジェクト絞り込み
+ * ============================================================ */
+function refreshProjFilter() {
+  const sel = $("projFilter");
+  const cur = projFilterId;
+  sel.innerHTML = "";
+  const optAll = document.createElement("option");
+  optAll.value = "all";
+  optAll.textContent = "全プロジェクト";
+  sel.appendChild(optAll);
+  for (const p of state.projects) {
+    const o = document.createElement("option");
+    o.value = p.id;
+    o.textContent = p.name;
+    sel.appendChild(o);
+  }
+  sel.value = state.projects.some(p => p.id === cur) || cur === "all" ? cur : "all";
+  projFilterId = sel.value;
+}
+$("projFilter").addEventListener("change", () => {
+  projFilterId = $("projFilter").value;
+  render();
+});
+
+/* ============================================================
+ * フェーズ追加/編集モーダル
+ * ============================================================ */
+let editingPhaseId = null;
+
+function populateProjectSelect(selectedId) {
+  const sel = $("mProject");
+  sel.innerHTML = "";
+  for (const p of state.projects) {
+    const o = document.createElement("option");
+    o.value = p.id;
+    o.textContent = p.name;
+    sel.appendChild(o);
+  }
+  const oNew = document.createElement("option");
+  oNew.value = "__new__";
+  oNew.textContent = "＋ 新しいプロジェクト…";
+  sel.appendChild(oNew);
+  if (selectedId && state.projects.some(p => p.id === selectedId)) sel.value = selectedId;
+  else if (state.projects.length === 0) sel.value = "__new__";
+  syncProjectNewInput();
+  populateCycleSelect();
+}
+function syncProjectNewInput() {
+  $("mProjectNew").classList.toggle("hidden", $("mProject").value !== "__new__");
+}
+function populateCycleSelect(selectedId) {
+  const sel = $("mCycle");
+  sel.innerHTML = "";
+  const pid = $("mProject").value;
+  const project = state.projects.find(p => p.id === pid);
+  if (project) {
+    for (const c of project.cycles) {
+      const o = document.createElement("option");
+      o.value = c.id;
+      o.textContent = c.name;
+      sel.appendChild(o);
+    }
+  }
+  const oNew = document.createElement("option");
+  oNew.value = "__new__";
+  oNew.textContent = "＋ 新しいサイクル…";
+  sel.appendChild(oNew);
+  if (selectedId && project && project.cycles.some(c => c.id === selectedId)) sel.value = selectedId;
+  else if (!project || project.cycles.length === 0) sel.value = "__new__";
+  syncCycleNewInput();
+}
+function syncCycleNewInput() {
+  $("mCycleNew").classList.toggle("hidden", $("mCycle").value !== "__new__");
+}
+$("mProject").addEventListener("change", () => { syncProjectNewInput(); populateCycleSelect(); });
+$("mCycle").addEventListener("change", syncCycleNewInput);
+
+function openPhaseModal(phaseId, projectId, cycleId, focusId) {
+  editingPhaseId = phaseId;
+  $("phaseModalTitle").textContent = phaseId ? "フェーズを編集" : "フェーズを追加";
+  $("mDelete").classList.toggle("hidden", !phaseId);
+  populateProjectSelect(projectId || (state.projects[0] && state.projects[0].id));
+  if (projectId) $("mProject").value = projectId;
+  syncProjectNewInput();
+  populateCycleSelect(cycleId);
+
+  if (phaseId) {
+    const found = findPhase(phaseId);
+    if (found) {
+      $("mName").value = found.phase.name;
+      $("mStart").value = found.phase.start;
+      $("mEnd").value = found.phase.end;
+      $("mOwner").value = found.phase.owner || "";
+      $("mStatus").value = found.phase.status || "planned";
+      $("mHidden").checked = !!found.phase.hidden;
+    }
+  } else {
+    $("mName").value = "";
+    const t = fmtISO(new Date());
+    $("mStart").value = t;
+    $("mEnd").value = t;
+    $("mOwner").value = "";
+    $("mStatus").value = "planned";
+    $("mHidden").checked = false;
+  }
+  $("phaseOverlay").classList.add("open");
+  $(focusId || "mName").focus();
+}
+function closePhaseModal() {
+  $("phaseOverlay").classList.remove("open");
+  editingPhaseId = null;
+}
+function findPhase(id) {
+  for (const pr of state.projects) for (const cy of pr.cycles) {
+    const i = cy.phases.findIndex(p => p.id === id);
+    if (i >= 0) return { project: pr, cycle: cy, phase: cy.phases[i], index: i };
+  }
+  return null;
+}
+
+$("mSave").addEventListener("click", () => {
+  const name = $("mName").value.trim();
+  const start = $("mStart").value;
+  const end = $("mEnd").value;
+  if (!name) { alert("フェーズ名を入れてね"); return; }
+  if (!start || !end) { alert("開始日と終了日を入れてね"); return; }
+  if (end < start) { alert("終了日が開始日より前になってるよ"); return; }
+
+  /* プロジェクト解決（新規なら作る） */
+  let project;
+  if ($("mProject").value === "__new__") {
+    const pname = $("mProjectNew").value.trim();
+    if (!pname) { alert("プロジェクト名を入れてね"); return; }
+    project = { id: uid(), name: pname, cycles: [] };
+    state.projects.push(project);
+  } else {
+    project = state.projects.find(p => p.id === $("mProject").value);
+  }
+
+  /* サイクル解決（新規なら作る） */
+  let cycle;
+  if ($("mCycle").value === "__new__") {
+    const cname = $("mCycleNew").value.trim();
+    if (!cname) { alert("サイクル名を入れてね"); return; }
+    cycle = { id: uid(), name: cname, phases: [] };
+    project.cycles.push(cycle);
+  } else {
+    cycle = project.cycles.find(c => c.id === $("mCycle").value);
+  }
+
+  const data = { name, start, end, owner: $("mOwner").value.trim(), status: $("mStatus").value, hidden: $("mHidden").checked };
+
+  if (editingPhaseId) {
+    const found = findPhase(editingPhaseId);
+    if (found) {
+      /* 別のサイクルに移された場合は移動する */
+      found.cycle.phases.splice(found.index, 1);
+      cycle.phases.push({ id: editingPhaseId, ...data });
+    }
+  } else {
+    cycle.phases.push({ id: uid(), ...data });
+  }
+
+  /* フェーズは開始日順に保つ */
+  cycle.phases.sort((a, b) => a.start.localeCompare(b.start));
+
+  save();
+  refreshProjFilter();
+  closePhaseModal();
+  render();
+});
+$("mDelete").addEventListener("click", () => {
+  if (!editingPhaseId) return;
+  const found = findPhase(editingPhaseId);
+  if (found && confirm(`「${found.phase.name}」を削除する?`)) {
+    found.cycle.phases.splice(found.index, 1);
+    save();
+    closePhaseModal();
+    render();
+  }
+});
+$("mCancel").addEventListener("click", closePhaseModal);
+$("phaseOverlay").addEventListener("click", (e) => { if (e.target === $("phaseOverlay")) closePhaseModal(); });
+
+/* ============================================================
+ * プロジェクト/サイクルの名前変更・削除モーダル
+ * ============================================================ */
+let editingGroup = null; // { kind: "project"|"cycle", id }
+
+function openGroupModal(kind, id) {
+  editingGroup = { kind, id };
+  const obj = kind === "project"
+    ? state.projects.find(p => p.id === id)
+    : state.projects.flatMap(p => p.cycles).find(c => c.id === id);
+  if (!obj) return;
+  $("groupModalTitle").textContent = kind === "project" ? "プロジェクトを編集" : "サイクルを編集";
+  $("groupLabel").textContent = kind === "project" ? "プロジェクト名" : "サイクル名";
+  $("gName").value = obj.name;
+  $("groupOverlay").classList.add("open");
+  $("gName").focus();
+}
+function closeGroupModal() {
+  $("groupOverlay").classList.remove("open");
+  editingGroup = null;
+}
+$("gSave").addEventListener("click", () => {
+  if (!editingGroup) return;
+  const name = $("gName").value.trim();
+  if (!name) { alert("名前を入れてね"); return; }
+  const obj = editingGroup.kind === "project"
+    ? state.projects.find(p => p.id === editingGroup.id)
+    : state.projects.flatMap(p => p.cycles).find(c => c.id === editingGroup.id);
+  if (obj) obj.name = name;
+  save();
+  refreshProjFilter();
+  closeGroupModal();
+  render();
+});
+$("gDelete").addEventListener("click", () => {
+  if (!editingGroup) return;
+  if (editingGroup.kind === "project") {
+    const p = state.projects.find(x => x.id === editingGroup.id);
+    if (p && confirm(`プロジェクト「${p.name}」を中身ごと削除する?`)) {
+      state.projects = state.projects.filter(x => x.id !== editingGroup.id);
+      if (projFilterId === editingGroup.id) projFilterId = "all";
+    } else return;
+  } else {
+    for (const pr of state.projects) {
+      const c = pr.cycles.find(x => x.id === editingGroup.id);
+      if (c) {
+        if (!confirm(`サイクル「${c.name}」を中身ごと削除する?`)) return;
+        pr.cycles = pr.cycles.filter(x => x.id !== editingGroup.id);
+        break;
+      }
+    }
+  }
+  save();
+  refreshProjFilter();
+  closeGroupModal();
+  render();
+});
+$("gCancel").addEventListener("click", closeGroupModal);
+$("groupOverlay").addEventListener("click", (e) => { if (e.target === $("groupOverlay")) closeGroupModal(); });
+
+/* ============================================================
+ * ツールチップ
+ * ============================================================ */
+const tooltip = $("tooltip");
+document.addEventListener("mouseover", (ev) => {
+  const bar = ev.target.closest("[data-tt]");
+  if (!bar || !bar.dataset.tt) { tooltip.style.display = "none"; return; }
+  const d = JSON.parse(bar.dataset.tt);
+  tooltip.innerHTML =
+    `<div class="tt-title">${escapeHtml(d.title)}</div>` +
+    `<div class="tt-sub">${escapeHtml(d.cycle)}</div>` +
+    `<div>${escapeHtml(d.period)}｜${escapeHtml(d.owner)}</div>` +
+    `<div>${escapeHtml(d.status)}（クリックで編集）</div>`;
+  tooltip.style.display = "block";
+});
+document.addEventListener("mousemove", (ev) => {
+  if (tooltip.style.display !== "block") return;
+  const pad = 14;
+  let x = ev.clientX + pad, y = ev.clientY + pad;
+  const r = tooltip.getBoundingClientRect();
+  if (x + r.width > innerWidth - 8) x = ev.clientX - r.width - pad;
+  if (y + r.height > innerHeight - 8) y = ev.clientY - r.height - pad;
+  tooltip.style.left = x + "px";
+  tooltip.style.top = y + "px";
+});
+document.addEventListener("mouseout", (ev) => {
+  if (ev.target.closest && ev.target.closest("[data-tt]")) tooltip.style.display = "none";
+});
+
+/* ============================================================
+ * 右クリックメニュー
+ * ============================================================ */
+const ctxMenu = $("ctxMenu");
+let ctxPid = null;
+
+function hideCtx() { ctxMenu.style.display = "none"; ctxPid = null; }
+
+document.addEventListener("contextmenu", (ev) => {
+  const el = ev.target.closest("[data-pid]");
+  if (!el) { hideCtx(); return; }
+  ev.preventDefault();
+  ctxPid = el.dataset.pid;
+  const found = findPhase(ctxPid);
+  if (!found) { hideCtx(); return; }
+  tooltip.style.display = "none";
+  $("ctxTitle").textContent = found.phase.name;
+  $("ctxHide").textContent = found.phase.hidden ? "👁 表示に戻す" : "🙈 非表示にする";
+  ctxMenu.style.display = "block";
+  const r = ctxMenu.getBoundingClientRect();
+  let x = ev.clientX, y = ev.clientY;
+  if (x + r.width > innerWidth - 8) x = innerWidth - r.width - 8;
+  if (y + r.height > innerHeight - 8) y = innerHeight - r.height - 8;
+  ctxMenu.style.left = x + "px";
+  ctxMenu.style.top = y + "px";
+});
+document.addEventListener("click", (ev) => { if (!ev.target.closest("#ctxMenu")) hideCtx(); });
+document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") hideCtx(); });
+window.addEventListener("blur", hideCtx);
+$("wrap").addEventListener("scroll", hideCtx);
+
+function ctxAction(fn) {
+  if (!ctxPid) return;
+  const found = findPhase(ctxPid);
+  hideCtx();
+  if (!found) return;
+  fn(found);
+}
+$("ctxEdit").addEventListener("click", () =>
+  ctxAction((f) => openPhaseModal(f.phase.id, f.project.id, f.cycle.id)));
+$("ctxHide").addEventListener("click", () =>
+  ctxAction((f) => { f.phase.hidden = !f.phase.hidden; save(); render(); }));
+$("ctxDone").addEventListener("click", () =>
+  ctxAction((f) => { f.phase.status = "done"; save(); render(); }));
+$("ctxActive").addEventListener("click", () =>
+  ctxAction((f) => { f.phase.status = "active"; save(); render(); }));
+$("ctxPlanned").addEventListener("click", () =>
+  ctxAction((f) => { f.phase.status = "planned"; save(); render(); }));
+$("ctxDelete").addEventListener("click", () =>
+  ctxAction((f) => {
+    if (!confirm(`「${f.phase.name}」を削除する?`)) return;
+    f.cycle.phases.splice(f.index, 1);
+    save(); render();
+  }));
+
+/* ============================================================
+ * ツールバーのイベント
+ * ============================================================ */
+$("pageSeg").addEventListener("click", (ev) => {
+  const btn = ev.target.closest("button");
+  if (!btn) return;
+  currentPage = btn.dataset.page;
+  document.querySelectorAll("#pageSeg button").forEach(b => b.classList.toggle("active", b === btn));
+  render();
+  scrollToToday();
+});
+$("viewSeg").addEventListener("click", (ev) => {
+  const btn = ev.target.closest("button");
+  if (!btn) return;
+  viewMode = btn.dataset.view;
+  document.querySelectorAll("#viewSeg button").forEach(b => b.classList.toggle("active", b === btn));
+  render();
+  scrollToToday();
+});
+$("addBtn").addEventListener("click", () => {
+  const pid = projFilterId !== "all" ? projFilterId : (state.projects[0] && state.projects[0].id);
+  openPhaseModal(null, pid, null);
+});
+$("todayBtn").addEventListener("click", scrollToToday);
+$("themeBtn").addEventListener("click", () => {
+  const root = document.documentElement;
+  root.dataset.theme = root.dataset.theme === "dark" ? "light" : "dark";
+});
+$("exportBtn").addEventListener("click", () => {
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "schedule.json";
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+$("importBtn").addEventListener("click", () => $("importFile").click());
+$("importFile").addEventListener("change", () => {
+  const f = $("importFile").files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const s = JSON.parse(reader.result);
+      if (!s || !Array.isArray(s.projects)) throw new Error("bad format");
+      if (!confirm("今のデータを読み込んだ内容で置き換える?")) return;
+      state = s;
+      save();
+      refreshProjFilter();
+      render();
+      scrollToToday();
+    } catch (e) {
+      alert("JSONの形式が違うみたい…エクスポートしたファイルを選んでね");
+    }
+    $("importFile").value = "";
+  };
+  reader.readAsText(f);
+});
+
+/* ============================================================
+ * 起動
+ * ============================================================ */
+refreshProjFilter();
+applyZoom();
+render();
+scrollToToday();
+requestAnimationFrame(scrollToToday); /* レイアウト確定後にもう一度、確実に今日へ */
+initCloud();
+
+/* タブを開き直して日付が変わっていたら、今日の位置に取り直す */
+let bootDay = fmtISO(new Date());
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && fmtISO(new Date()) !== bootDay) {
+    bootDay = fmtISO(new Date());
+    render();
+    scrollToToday();
+  }
+});
+</script>
+</body>
+</html>
