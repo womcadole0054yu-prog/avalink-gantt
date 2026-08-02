@@ -25,6 +25,7 @@
     --bar-done: #63b168;
     --bar-active: #1e6fd0;
     --bar-planned: #8fbdf2;
+    --bar-delayed: #d03b3b;
     --hover-wash: rgba(30,111,208,0.07);
     --accent: #1e6fd0;
     --sun: #e03131;
@@ -49,6 +50,7 @@
     --bar-done: #4e8f53;
     --bar-active: #3b82e0;
     --bar-planned: #35578a;
+    --bar-delayed: #e05555;
     --hover-wash: rgba(59,130,224,0.12);
     --accent: #3b82e0;
     --sun: #ff6b6b;
@@ -299,6 +301,7 @@
   .bar.done    { background: var(--bar-done); }
   .bar.active  { background: var(--bar-active); }
   .bar.planned { background: var(--bar-planned); }
+  .bar.delayed { background: var(--bar-delayed); }
   .bar.milestone {
     height: 13px;
     width: 13px;
@@ -365,6 +368,7 @@
   .ov-block.done    { background: var(--bar-done); }
   .ov-block.active  { background: var(--bar-active); color: #fff; }
   .ov-block.planned { background: var(--bar-planned); }
+  .ov-block.delayed { background: var(--bar-delayed); color: #fff; }
   .ov-block-label {
     position: sticky;
     top: 56px;
@@ -401,6 +405,58 @@
   .ov-chip.done    { background: var(--bar-done); }
   .ov-chip.active  { background: var(--bar-active); color: #fff; }
   .ov-chip.planned { background: var(--bar-planned); }
+  .ov-chip.delayed { background: var(--bar-delayed); color: #fff; }
+
+  /* ---------- 今日のサマリー ---------- */
+  .summary {
+    background: var(--surface-1);
+    border-bottom: 1px solid var(--border);
+    padding: 6px 14px 7px;
+    flex-shrink: 0;
+    font-size: 12.5px;
+  }
+  .summary-head {
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    user-select: none;
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .summary-head #summaryDate { color: var(--text-muted); font-weight: 600; }
+  .summary-body {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 8px;
+    margin-top: 6px;
+    align-items: center;
+  }
+  .sum-label { font-weight: 800; font-size: 12px; color: var(--text-muted); margin-left: 6px; }
+  .sum-label:first-child { margin-left: 0; }
+  .sum-chip {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 2px 10px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    max-width: 320px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .sum-chip:hover { background: var(--hover-wash); }
+  .sum-chip.late { color: var(--bar-delayed); border-color: rgba(208,59,59,0.5); font-weight: 700; }
+  .sum-empty { color: var(--text-muted); font-size: 12px; }
+  @media (max-width: 640px) {
+    .summary { padding: 5px 8px 6px; }
+    .sum-chip { max-width: 220px; }
+  }
+
+  .f-cell.late { color: var(--bar-delayed); font-weight: 700; }
   .ov-h-proj {
     position: sticky;
     top: 0;
@@ -615,6 +671,7 @@
     <button data-view="week">週</button>
   </div>
   <select class="btn" id="projFilter" title="プロジェクト絞り込み"></select>
+  <select class="btn" id="ownerFilter" title="担当で絞り込み"></select>
   <button class="btn primary" id="addBtn">＋ 追加</button>
   <button class="btn" id="todayBtn">今日へ</button>
   <div class="seg" id="zoomSeg" title="拡大・縮小">
@@ -633,7 +690,14 @@
     <span><i style="background:var(--bar-done)"></i>✅ 完了</span>
     <span><i style="background:var(--bar-active)"></i>🔄 進行中</span>
     <span><i style="background:var(--bar-planned)"></i>⏳ 予定</span>
+    <span><i style="background:var(--bar-delayed)"></i>⚠️ 遅延</span>
   </div>
+</div>
+
+<!-- 今日のサマリー -->
+<div class="summary" id="summaryPanel">
+  <div class="summary-head" id="summaryToggle"><span id="summaryArrow">▼</span> 今日のサマリー <span id="summaryDate"></span></div>
+  <div class="summary-body" id="summaryBody"></div>
 </div>
 
 <div class="gantt-wrap" id="wrap">
@@ -649,6 +713,9 @@
 
     <h3>見る</h3>
     <ul>
+      <li><b>今日のサマリー</b> 画面上部に遅延・進行中・7日以内の公開が出る。チップを押すとそのフェーズが開く</li>
+      <li><b>⚠️遅延（赤いバー）</b> 終了日を過ぎたのに完了になっていないフェーズは自動で赤くなる。完了にすれば消える</li>
+      <li><span class="kbd">全担当 ▾</span> 担当（劇団スカッシュ等）で絞り込み</li>
       <li><span class="kbd">ガント</span> 横に時間が流れる表。<span class="kbd">日</span>/<span class="kbd">週</span>で目盛りを切替</li>
       <li><span class="kbd">全体</span> 縦に日付が流れる表。プロジェクト横断で「今なにをやってるか」を見る用</li>
       <li><span class="kbd">今日へ</span> 今日の位置にジャンプ（開いたときは自動で今日に来る）</li>
@@ -3882,6 +3949,12 @@ const WEEK_W = 72;
 let currentPage = "gantt";   // "gantt" | "overview"
 let viewMode = "day";        // "day" | "week"
 let projFilterId = "all";
+let ownerFilterId = "all";   // 担当フィルタ
+const matchOwner = (p) => ownerFilterId === "all" || (p.owner || "") === ownerFilterId;
+/* 遅延 = 終了日を過ぎているのに完了になっていないフェーズ（表示上の判定で、データは変えない） */
+function isDelayed(p, today) {
+  return p.status !== "done" && parseDate(p.end) < today;
+}
 let showHidden = false;      // 非表示フェーズを一時的に見せるか
 let zoomPct = parseInt(localStorage.getItem("gantt-zoom") || "100", 10) || 100;
 /* 折りたたみ状態は保存して、再読み込みしても維持する */
@@ -4074,6 +4147,11 @@ function renderGantt() {
 
   projects.forEach((project) => {
     if (project.hidden && !showHidden) return;
+    if (ownerFilterId !== "all") {
+      const any = project.cycles.some(cy =>
+        cy.phases.some(p => matchOwner(p) && !((p.hidden || cy.hidden || project.hidden) && !showHidden)));
+      if (!any) return;
+    }
     if (showProjectRows) {
       const c = makeGroupRow("project", project.id, `📁 ${project.name}`,
         () => openPhaseModal(null, project.id, null),
@@ -4083,14 +4161,17 @@ function renderGantt() {
     project.cycles.forEach((cycle) => {
       if (cycle.hidden && !showHidden) return;
       const groupHidden = !!(project.hidden || cycle.hidden);
+      const phasesToShow = cycle.phases.filter(p =>
+        !((p.hidden || groupHidden) && !showHidden) && matchOwner(p));
+      if (ownerFilterId !== "all" && phasesToShow.length === 0) return;
       const c = makeGroupRow("cycle", cycle.id, cycle.name,
         () => openPhaseModal(null, project.id, cycle.id),
         () => openGroupModal("cycle", cycle.id), groupHidden);
       if (c) return;
 
-      cycle.phases.forEach((p) => {
-        if ((p.hidden || groupHidden) && !showHidden) return;
+      phasesToShow.forEach((p) => {
         const dim = (p.hidden || groupHidden) ? " dim" : "";
+        const late = isDelayed(p, today);
         const s = parseDate(p.start), e = parseDate(p.end);
 
         const bg = document.createElement("div");
@@ -4106,7 +4187,11 @@ function renderGantt() {
           start:  { value: fmtMD(s), focus: "mStart", cls: " num" },
           end:    { value: fmtMD(e), focus: "mEnd", cls: " num" },
           owner:  { value: p.owner || "", focus: "mOwner", cls: "" },
-          status: { value: MOBILE ? (STATUS_ICON[p.status] || "") : (STATUS_LABEL[p.status] || ""), focus: "mStatus", cls: " status" },
+          status: {
+            value: late ? (MOBILE ? "⚠️" : "⚠️遅延") : (MOBILE ? (STATUS_ICON[p.status] || "") : (STATUS_LABEL[p.status] || "")),
+            focus: "mStatus",
+            cls: " status" + (late ? " late" : ""),
+          },
         };
         let off = 0;
         FIXED_COLS.forEach((c2, i) => {
@@ -4131,7 +4216,7 @@ function renderGantt() {
         const c1 = colIndexOf(cols, s), c2i = colIndexOf(cols, e);
         const bar = document.createElement("div");
         const isMilestone = viewMode === "day" && sameDay(s, e);
-        bar.className = "bar " + (p.status || "planned") + (isMilestone ? " milestone" : "") + dim;
+        bar.className = "bar " + (late ? "delayed" : (p.status || "planned")) + (isMilestone ? " milestone" : "") + dim;
         bar.style.gridColumn = `${FIXED_COLS.length + 1 + c1} / ${FIXED_COLS.length + 2 + c2i}`;
         bar.style.gridRow = `${row}`;
         bar.dataset.pid = p.id;
@@ -4140,7 +4225,8 @@ function renderGantt() {
           cycle: `${project.name} / ${cycle.name}`,
           period: `${fmtMD(s)} 〜 ${fmtMD(e)}`,
           owner: p.owner || "-",
-          status: STATUS_LABEL[p.status] || "-",
+          status: (STATUS_LABEL[p.status] || "-") +
+            (late ? `｜⚠️${Math.round((today - e) / 86400000)}日遅れ` : ""),
         });
         bar.addEventListener("click", () => openPhaseModal(p.id, project.id, cycle.id));
         frag.appendChild(bar);
@@ -4269,6 +4355,7 @@ function renderOverview() {
     const base = 2 + pi * 2;
     const items = [];
     for (const cy of pr.cycles) for (const p of cy.phases) {
+      if (!matchOwner(p)) continue;
       items.push({ p, cy, ghost: !!(pr.hidden || cy.hidden) });
     }
 
@@ -4304,7 +4391,7 @@ function renderOverview() {
 
     for (const x of prod) {
       const el = document.createElement("div");
-      el.className = "ov-block " + (x.p.status || "planned") + ((x.p.hidden || x.ghost) ? " dim" : "");
+      el.className = "ov-block " + (isDelayed(x.p, today) ? "delayed" : (x.p.status || "planned")) + ((x.p.hidden || x.ghost) ? " dim" : "");
       el.style.gridColumn = `${base}`;
       const r1 = Math.max(3, rowOf(x.s));
       const r2 = Math.min(3 + totalDays, rowOf(x.e) + 1);
@@ -4335,7 +4422,7 @@ function renderOverview() {
       const s = parseDate(x.p.start);
       if (s < range.start || s > range.end) continue;
       const el = document.createElement("div");
-      el.className = "ov-chip " + (x.p.status || "planned") + ((x.p.hidden || x.ghost) ? " dim" : "");
+      el.className = "ov-chip " + (isDelayed(x.p, today) ? "delayed" : (x.p.status || "planned")) + ((x.p.hidden || x.ghost) ? " dim" : "");
       el.style.gridColumn = `${base + 1}`;
       el.style.gridRow = `${rowOf(s)}`;
       el.textContent = x.p.name;
@@ -4356,10 +4443,95 @@ function renderOverview() {
 }
 
 /* ============================================================
+ * 今日のサマリー
+ * ============================================================ */
+function renderSummary() {
+  const body = $("summaryBody");
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  $("summaryDate").textContent = `${fmtMD(today)} (${DOW[today.getDay()]})`;
+
+  const items = [];
+  for (const pr of visibleProjects()) {
+    if (pr.hidden && !showHidden) continue;
+    for (const cy of pr.cycles) {
+      if (cy.hidden && !showHidden) continue;
+      for (const p of cy.phases) {
+        if (p.hidden && !showHidden) continue;
+        if (!matchOwner(p)) continue;
+        items.push({ p, pr, cy });
+      }
+    }
+  }
+
+  const delayed = [], running = [], releases = [];
+  for (const x of items) {
+    const s = parseDate(x.p.start), e = parseDate(x.p.end);
+    if (isDelayed(x.p, today)) {
+      delayed.push({ ...x, days: Math.round((today - e) / 86400000) });
+      continue;
+    }
+    if (isRelease(x.p)) {
+      const d = Math.round((s - today) / 86400000);
+      if (d >= 0 && d <= 7) releases.push({ ...x, in: d });
+    } else if (s <= today && today <= e && x.p.status !== "done") {
+      running.push(x);
+    }
+  }
+  delayed.sort((a, b) => b.days - a.days);
+  releases.sort((a, b) => a.in - b.in);
+
+  body.innerHTML = "";
+  const addChips = (label, arr, fmt, late) => {
+    if (!arr.length) return;
+    const lb = document.createElement("span");
+    lb.className = "sum-label";
+    lb.textContent = label;
+    body.appendChild(lb);
+    const MAX = 6;
+    arr.slice(0, MAX).forEach((x) => {
+      const chip = document.createElement("span");
+      chip.className = "sum-chip" + (late ? " late" : "");
+      chip.textContent = fmt(x);
+      chip.title = `${x.pr.name} / ${x.cy.name}`;
+      chip.addEventListener("click", () => openPhaseModal(x.p.id, x.pr.id, x.cy.id));
+      body.appendChild(chip);
+    });
+    if (arr.length > MAX) {
+      const more = document.createElement("span");
+      more.className = "sum-more";
+      more.textContent = `他${arr.length - MAX}件`;
+      body.appendChild(more);
+    }
+  };
+  addChips(`⚠️遅延 ${delayed.length}件`, delayed, (x) => `${x.pr.name}｜${x.p.name} +${x.days}日`, true);
+  addChips("▶ 進行中", running, (x) => `${x.pr.name}｜${x.p.name}`);
+  addChips("📅 7日以内の公開", releases, (x) => `${x.pr.name}｜${x.p.name}（${x.in === 0 ? "今日" : x.in + "日後"}）`);
+  if (!body.children.length) {
+    const ok = document.createElement("span");
+    ok.className = "sum-empty";
+    ok.textContent = "遅延なし・直近の公開なし ✨";
+    body.appendChild(ok);
+  }
+}
+
+/* サマリーの開閉（状態は保存） */
+let summaryOff = localStorage.getItem("gantt-summary-off") === "1";
+function applySummaryVisibility() {
+  $("summaryBody").style.display = summaryOff ? "none" : "";
+  $("summaryArrow").textContent = summaryOff ? "▶" : "▼";
+}
+$("summaryToggle").addEventListener("click", () => {
+  summaryOff = !summaryOff;
+  try { localStorage.setItem("gantt-summary-off", summaryOff ? "1" : "0"); } catch (e) {}
+  applySummaryVisibility();
+});
+
+/* ============================================================
  * 描画の入り口
  * ============================================================ */
 function render() {
   $("viewSeg").style.display = currentPage === "gantt" ? "" : "none";
+  renderSummary();
   if (currentPage === "gantt") renderGantt();
   else renderOverview();
 }
@@ -4419,9 +4591,36 @@ function refreshProjFilter() {
   }
   sel.value = state.projects.some(p => p.id === cur) || cur === "all" ? cur : "all";
   projFilterId = sel.value;
+  refreshOwnerFilter();
 }
 $("projFilter").addEventListener("change", () => {
   projFilterId = $("projFilter").value;
+  render();
+});
+
+function refreshOwnerFilter() {
+  const sel = $("ownerFilter");
+  const cur = ownerFilterId;
+  const owners = new Set();
+  for (const pr of state.projects) for (const cy of pr.cycles) for (const p of cy.phases) {
+    if (p.owner) owners.add(p.owner);
+  }
+  sel.innerHTML = "";
+  const optAll = document.createElement("option");
+  optAll.value = "all";
+  optAll.textContent = "全担当";
+  sel.appendChild(optAll);
+  for (const o of [...owners].sort()) {
+    const opt = document.createElement("option");
+    opt.value = o;
+    opt.textContent = o;
+    sel.appendChild(opt);
+  }
+  sel.value = owners.has(cur) || cur === "all" ? cur : "all";
+  ownerFilterId = sel.value;
+}
+$("ownerFilter").addEventListener("change", () => {
+  ownerFilterId = $("ownerFilter").value;
   render();
 });
 
@@ -4835,6 +5034,7 @@ $("importFile").addEventListener("change", () => {
  * ============================================================ */
 refreshProjFilter();
 applyZoom();
+applySummaryVisibility();
 render();
 scrollToToday();
 requestAnimationFrame(scrollToToday); /* レイアウト確定後にもう一度、確実に今日へ */
