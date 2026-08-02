@@ -3998,7 +3998,9 @@ function renderGantt() {
     el.style.gridColumn = `${FIXED_COLS.length + 1 + i}`;
     el.style.gridRow = "2";
     el.style.top = "28px";
-    el.textContent = viewMode === "day" ? fmtMD(c.start) : `${fmtMD(c.start)}〜`;
+    /* 月は上の月ヘッダーにあるので、日ビューは日にちの数字だけ（潰れ防止） */
+    el.textContent = viewMode === "day" ? String(c.start.getDate()) : `${fmtMD(c.start)}〜`;
+    el.title = `${c.start.getFullYear()}/${fmtMD(c.start)} (${DOW[dow]})`;
     frag.appendChild(el);
     if (viewMode === "day") {
       const el2 = document.createElement("div");
