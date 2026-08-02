@@ -484,6 +484,35 @@
   .modal .actions .spacer { margin-right: auto; }
   .hidden { display: none !important; }
 
+  /* ---------- help ---------- */
+  .help-modal { width: min(520px, calc(100vw - 32px)); }
+  .help-modal h3 {
+    font-size: 13.5px;
+    margin: 16px 0 6px;
+    padding-bottom: 4px;
+    border-bottom: 2px solid var(--cycle-bg);
+  }
+  .help-modal h3:first-of-type { margin-top: 4px; }
+  .help-modal ul { margin: 0; padding-left: 0; list-style: none; }
+  .help-modal li {
+    padding: 4px 0 4px 2px;
+    font-size: 13px;
+    line-height: 1.65;
+    color: var(--text-secondary);
+  }
+  .help-modal li b { color: var(--text-primary); }
+  .help-modal .kbd {
+    display: inline-block;
+    padding: 1px 8px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--page);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-primary);
+    white-space: nowrap;
+  }
+
   /* ---------- context menu ---------- */
   .ctx {
     position: fixed;
@@ -571,6 +600,7 @@
   <button class="btn" id="exportBtn" title="JSONで保存">⬇</button>
   <button class="btn" id="importBtn" title="JSONを読み込み">⬆</button>
   <span class="btn" id="syncBadge" style="cursor:default" title="同期状態">…</span>
+  <button class="btn" id="helpBtn" title="使い方">?</button>
   <input type="file" id="importFile" accept=".json" class="hidden">
   <div class="legend">
     <span><i style="background:var(--bar-done)"></i>✅ 完了</span>
@@ -584,6 +614,48 @@
 </div>
 
 <div class="tooltip" id="tooltip"></div>
+
+<!-- ヘルプ -->
+<div class="overlay" id="helpOverlay">
+  <div class="modal help-modal">
+    <h2>📖 このサイトの使い方</h2>
+
+    <h3>見る</h3>
+    <ul>
+      <li><span class="kbd">ガント</span> 横に時間が流れる表。<span class="kbd">日</span>/<span class="kbd">週</span>で目盛りを切替</li>
+      <li><span class="kbd">全体</span> 縦に日付が流れる表。プロジェクト横断で「今なにをやってるか」を見る用</li>
+      <li><span class="kbd">今日へ</span> 今日の位置にジャンプ（開いたときは自動で今日に来る）</li>
+      <li><span class="kbd">－ / ＋</span> 表全体の拡大・縮小</li>
+      <li>バー・ブロックに<b>マウスを乗せると詳細</b>がポップアップ</li>
+      <li>プロジェクト名・サイクル名をクリックすると<b>折りたたみ</b></li>
+    </ul>
+
+    <h3>編集する</h3>
+    <ul>
+      <li><span class="kbd">＋ 追加</span> フェーズを追加。名前と開始日・終了日を入れれば<b>バーは自動で描かれる</b></li>
+      <li>フェーズ名・日付・担当・状態の<b>セルをクリック</b>しても編集できる</li>
+      <li><b>右クリック</b>で編集・非表示・状態変更（✅完了/🔄進行中/⏳予定）・削除がワンクリック</li>
+      <li>フェーズ名に「公開」を含めると、全体ページで<b>公開列のチップ</b>になる</li>
+    </ul>
+
+    <h3>非表示</h3>
+    <ul>
+      <li>右クリック→<span class="kbd">🙈 非表示にする</span>で一覧から消える（データは残る）</li>
+      <li><span class="kbd">👁 非表示分</span>を押すと薄い表示で確認でき、右クリックで戻せる</li>
+    </ul>
+
+    <h3>保存と共有</h3>
+    <ul>
+      <li>編集は<b>自動保存</b>。右上が<span class="kbd">☁️ 同期OK</span>なら全員に即反映される</li>
+      <li><span class="kbd">⚠️ オフライン</span>のときの編集はこの端末だけに残る（復帰後の編集から同期）</li>
+      <li><span class="kbd">⬇</span> データをJSONファイルで保存（バックアップ・AIに渡す用） / <span class="kbd">⬆</span> 読み込み</li>
+    </ul>
+
+    <div class="actions">
+      <button class="btn primary" id="helpClose">閉じる</button>
+    </div>
+  </div>
+</div>
 
 <!-- 右クリックメニュー -->
 <div class="ctx" id="ctxMenu">
@@ -2994,6 +3066,13 @@ document.addEventListener("mousemove", (ev) => {
 document.addEventListener("mouseout", (ev) => {
   if (ev.target.closest && ev.target.closest("[data-tt]")) tooltip.style.display = "none";
 });
+
+/* ============================================================
+ * ヘルプ
+ * ============================================================ */
+$("helpBtn").addEventListener("click", () => $("helpOverlay").classList.add("open"));
+$("helpClose").addEventListener("click", () => $("helpOverlay").classList.remove("open"));
+$("helpOverlay").addEventListener("click", (e) => { if (e.target === $("helpOverlay")) $("helpOverlay").classList.remove("open"); });
 
 /* ============================================================
  * 右クリックメニュー
