@@ -312,6 +312,44 @@
   .bh.r { right: -3px; }
   /* 行ドラッグの挿入先ハイライト */
   .drop-here { box-shadow: inset 0 3px 0 0 var(--accent) !important; }
+
+  /* 検索ヒットのフラッシュ */
+  .search-hit { outline: 3px solid var(--accent); outline-offset: -2px; }
+
+  /* Ctrl+クリックの複数選択 */
+  .f-cell.selected, .row-bg.selected { background: var(--hover-wash); }
+  .bar.selected, .ov-block.selected, .ov-chip.selected { box-shadow: 0 0 0 2px var(--accent); }
+
+  /* 一括操作バー */
+  .bulkbar {
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 16px;
+    z-index: 70;
+    display: none;
+    gap: 7px;
+    align-items: center;
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 13px;
+    padding: 8px 13px;
+    box-shadow: 0 10px 32px rgba(0,0,0,0.28);
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: calc(100vw - 20px);
+  }
+  .bulkbar.open { display: flex; }
+  .bulkbar span { font-weight: 800; font-size: 12.5px; }
+
+  .btn:disabled { opacity: 0.35; cursor: default; }
+
+  /* 印刷: ツールバー等を消してチャートだけ */
+  @media print {
+    .toolbar, .summary, .bulkbar, .tooltip, .ctx { display: none !important; }
+    body { height: auto; overflow: visible; }
+    .gantt-wrap { overflow: visible; }
+  }
   .bar:hover { filter: brightness(1.12); }
   .bar.done    { background: var(--bar-done); }
   .bar.active  { background: var(--bar-active); }
@@ -563,6 +601,18 @@
     color: var(--text-primary);
   }
   .form-row input:focus, .form-row select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .form-row textarea {
+    width: 100%;
+    padding: 7px 9px;
+    font-family: inherit;
+    font-size: 13px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--page);
+    color: var(--text-primary);
+    resize: vertical;
+  }
+  .form-row textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
   .modal .actions {
     display: flex;
     gap: 8px;
@@ -718,12 +768,17 @@
     <button id="zoomLabel" disabled>100%</button>
     <button id="zoomIn">＋</button>
   </div>
+  <button class="btn" id="undoBtn" title="元に戻す (Ctrl+Z)">↩</button>
+  <button class="btn" id="redoBtn" title="やり直す (Ctrl+Y)">↪</button>
+  <input class="btn" id="searchBox" placeholder="🔍 検索" style="width:120px" title="Enterで次の一致へジャンプ">
   <button class="btn" id="moreBtn" title="その他">⋯</button>
   <div id="moreMenu">
     <button class="btn" id="eyeBtn" title="非表示にしたフェーズを表示/隠す">👁 非表示分</button>
     <button class="btn" id="themeBtn" title="テーマ切替">🌓 テーマ</button>
     <button class="btn" id="exportBtn" title="JSONで保存">⬇ 保存</button>
     <button class="btn" id="importBtn" title="JSONを読み込み">⬆ 読み込み</button>
+    <button class="btn" id="csvBtn" title="スプレッドに貼れるCSVを書き出し">📤 CSV</button>
+    <button class="btn" id="tsvBtn" title="スプレッドからコピーした行を貼り付けて一括登録">📋 貼り付け取込</button>
     <span class="btn" id="syncBadge" style="cursor:default" title="同期状態">…</span>
     <button class="btn" id="helpBtn" title="使い方">ヘルプ</button>
   </div>
@@ -773,6 +828,12 @@
       <li><b>バーを左右にドラッグ</b>で日程まるごと移動、<b>バーの端をつまむ</b>と期間の伸縮（PC・日ビュー）</li>
       <li><b>フェーズ名をドラッグ</b>して行の並べ替え。別サイクルの行やサイクル名に落とすと移動</li>
       <li><b>右クリック</b>（スマホは長押し）で編集・複製・コピー/貼り付け・上下移動・非表示・状態変更・削除</li>
+      <li><span class="kbd">Ctrl+Z</span>/<span class="kbd">↩</span> 元に戻す・<span class="kbd">Ctrl+Y</span>/<span class="kbd">↪</span> やり直し</li>
+      <li><span class="kbd">Ctrl+クリック</span>で複数選択 → 下に出るバーで<b>一括で完了/削除など</b></li>
+      <li><span class="kbd">🔍 検索</span>にキーワード→Enterで該当フェーズへジャンプ（もう一度Enterで次へ）</li>
+      <li>サイクルの✏️に<b>「複製して◯日後ろへ」</b>— 次のサイクルの予定を一発生成（オートフィル的なやつ）</li>
+      <li>編集画面の<b>メモ欄</b>に書くと💬マークが付いて、ホバーで読める</li>
+      <li>⋯メニューの<span class="kbd">📤 CSV</span>でスプレッドに貼れる形で書き出し／<span class="kbd">📋 貼り付け取込</span>でスプレッドの行から一括登録</li>
       <li>フェーズ名に「公開」を含めると、全体ページで<b>公開列のチップ</b>になる</li>
     </ul>
 
@@ -793,6 +854,42 @@
       <button class="btn primary" id="helpClose">閉じる</button>
     </div>
   </div>
+</div>
+
+<!-- スプレッド貼り付け取込 -->
+<div class="overlay" id="tsvOverlay">
+  <div class="modal">
+    <h2>📋 スプレッドから貼り付けて取り込み</h2>
+    <div class="form-row">
+      <label>プロジェクト</label>
+      <select id="tProject"></select>
+      <input id="tProjectNew" class="hidden" style="margin-top:6px" placeholder="新しいプロジェクト名">
+    </div>
+    <div class="form-row">
+      <label>サイクル</label>
+      <select id="tCycle"></select>
+      <input id="tCycleNew" class="hidden" style="margin-top:6px" placeholder="新しいサイクル名">
+    </div>
+    <div class="form-row">
+      <label>スプレッドの行をコピーしてここに貼り付け（列: フェーズ名｜開始日｜終了日｜担当｜状態）</label>
+      <textarea id="tText" rows="8" placeholder="台本会議	8/27	8/28	両社	予定&#10;台本執筆	8/29	9/7	劇団スカッシュ&#10;※日付は 8/29・2026/8/29・2026-08-29 どれでもOK。担当と状態は省略可"></textarea>
+    </div>
+    <div class="actions">
+      <button class="btn" id="tCancel">キャンセル</button>
+      <button class="btn primary" id="tImport">取り込む</button>
+    </div>
+  </div>
+</div>
+
+<!-- 一括操作バー -->
+<div class="bulkbar" id="bulkBar">
+  <span id="bulkCount"></span>
+  <button class="btn" id="bulkDone">✅完了</button>
+  <button class="btn" id="bulkActive">🔄進行中</button>
+  <button class="btn" id="bulkPlanned">⏳予定</button>
+  <button class="btn" id="bulkHide">🙈非表示</button>
+  <button class="btn danger" id="bulkDelete">🗑削除</button>
+  <button class="btn" id="bulkClear">✖解除</button>
 </div>
 
 <!-- 右クリックメニュー -->
@@ -855,6 +952,10 @@
       </div>
     </div>
     <div class="form-row">
+      <label>メモ（任意・💬マークが付く）</label>
+      <input id="mMemo" placeholder="例: 版元の返事待ち。月曜リマインド">
+    </div>
+    <div class="form-row">
       <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:12.5px;margin-bottom:0;">
         <input type="checkbox" id="mHidden" style="width:auto;"> このフェーズを非表示にする（👁ボタンで確認できる）
       </label>
@@ -879,6 +980,13 @@
       <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:12.5px;margin-bottom:0;">
         <input type="checkbox" id="gHidden" style="width:auto;"> まるごと非表示にする（👁ボタンで確認できる）
       </label>
+    </div>
+    <div class="form-row" id="gShiftRow">
+      <label>サイクルごと複製して未来の予定を作る（状態は⏳予定にリセット）</label>
+      <div class="pair">
+        <input type="number" id="gShiftDays" value="42" step="7" title="ずらす日数">
+        <button class="btn" id="gDupShift" style="white-space:nowrap;">⧉ 複製して◯日後ろへ</button>
+      </div>
     </div>
     <div class="actions">
       <button class="btn danger spacer" id="gDelete">削除</button>
@@ -3880,6 +3988,8 @@ const SAMPLE = {
 };
 
 let state = loadState();
+let curJson = JSON.stringify(state); /* Undo用: 直前の保存済み状態 */
+const undoStack = [], redoStack = [];
 
 function loadState() {
   try {
@@ -3891,7 +4001,7 @@ function loadState() {
   } catch (e) { /* 壊れていたらサンプルに戻す */ }
   return JSON.parse(JSON.stringify(SAMPLE));
 }
-function save() {
+function persistOnly() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch (e) {
@@ -3899,6 +4009,44 @@ function save() {
     console.warn("保存できなかった:", e);
   }
   cloudPush();
+}
+
+function save() {
+  const newJson = JSON.stringify(state);
+  if (newJson !== curJson) {
+    undoStack.push(curJson);
+    if (undoStack.length > 50) undoStack.shift();
+    redoStack.length = 0;
+    curJson = newJson;
+    updateUndoButtons();
+  }
+  persistOnly();
+}
+
+function undo() {
+  if (!undoStack.length) return;
+  redoStack.push(JSON.stringify(state));
+  state = JSON.parse(undoStack.pop());
+  curJson = JSON.stringify(state);
+  updateUndoButtons();
+  persistOnly();
+  refreshProjFilter();
+  render();
+}
+function redo() {
+  if (!redoStack.length) return;
+  undoStack.push(JSON.stringify(state));
+  state = JSON.parse(redoStack.pop());
+  curJson = JSON.stringify(state);
+  updateUndoButtons();
+  persistOnly();
+  refreshProjFilter();
+  render();
+}
+function updateUndoButtons() {
+  const u = document.getElementById("undoBtn"), r = document.getElementById("redoBtn");
+  if (u) u.disabled = !undoStack.length;
+  if (r) r.disabled = !redoStack.length;
 }
 
 /* ============================================================
@@ -3939,6 +4087,7 @@ function initCloud() {
         const s = JSON.parse(j);
         if (s && Array.isArray(s.projects)) {
           state = s;
+          curJson = j; /* リモート更新をUndo基準点にする */
           try { localStorage.setItem(STORAGE_KEY, j); } catch (e) {}
           refreshProjFilter();
           render();
@@ -4233,7 +4382,7 @@ function renderGantt() {
 
         const CELL = {
           cycle:  { value: "", focus: null, cls: "" },
-          phase:  { value: p.name, focus: "mName", cls: " wrap" },
+          phase:  { value: p.name + (p.memo ? " 💬" : ""), focus: "mName", cls: " wrap" },
           start:  { value: fmtMD(s), focus: "mStart", cls: " num" },
           end:    { value: fmtMD(e), focus: "mEnd", cls: " num" },
           owner:  { value: p.owner || "", focus: "mOwner", cls: "" },
@@ -4256,8 +4405,11 @@ function renderGantt() {
           el.textContent = def.value;
           el.dataset.pid = p.id;
           if (c2.key !== "cycle") {
-            el.title = c2.key === "phase" ? p.name : "クリックで編集";
-            el.addEventListener("click", () => openPhaseModal(p.id, project.id, cycle.id, def.focus));
+            el.title = c2.key === "phase" ? (p.memo ? `${p.name}\n💬 ${p.memo}` : p.name) : "クリックで編集";
+            el.addEventListener("click", (ev) => {
+              if (ev.ctrlKey || ev.metaKey) { toggleSelect(p.id); return; }
+              openPhaseModal(p.id, project.id, cycle.id, def.focus);
+            });
           }
           if (c2.key === "phase") {
             /* フェーズ名セルをドラッグして行の並べ替え・別サイクルへ移動 */
@@ -4286,9 +4438,11 @@ function renderGantt() {
           owner: p.owner || "-",
           status: (STATUS_LABEL[p.status] || "-") +
             (late ? `｜⚠️${Math.round((today - e) / 86400000)}日遅れ` : ""),
+          memo: p.memo || "",
         });
-        bar.addEventListener("click", () => {
+        bar.addEventListener("click", (ev) => {
           if (barDragMoved) return; /* ドラッグ直後のクリックは無視 */
+          if (ev.ctrlKey || ev.metaKey) { toggleSelect(p.id); return; }
           openPhaseModal(p.id, project.id, cycle.id);
         });
         if (!isMilestone) {
@@ -4469,7 +4623,7 @@ function renderOverview() {
         el.style.marginLeft = `calc(${(100 * x.lane) / x.laneCount}% + 2px)`;
       }
       el.innerHTML =
-        `<span class="ov-block-label">${escapeHtml(x.p.name)}` +
+        `<span class="ov-block-label">${escapeHtml(x.p.name)}${x.p.memo ? " 💬" : ""}` +
         (x.p.owner ? `<span class="ov-owner">${escapeHtml(x.p.owner)}</span>` : "") +
         `</span>`;
       el.dataset.pid = x.p.id;
@@ -4479,8 +4633,12 @@ function renderOverview() {
         period: `${fmtMD(x.s)} 〜 ${fmtMD(x.e)}`,
         owner: x.p.owner || "-",
         status: STATUS_LABEL[x.p.status] || "-",
+        memo: x.p.memo || "",
       });
-      el.addEventListener("click", () => openPhaseModal(x.p.id, pr.id, x.cy.id));
+      el.addEventListener("click", (ev) => {
+        if (ev.ctrlKey || ev.metaKey) { toggleSelect(x.p.id); return; }
+        openPhaseModal(x.p.id, pr.id, x.cy.id);
+      });
       frag.appendChild(el);
     }
 
@@ -4502,7 +4660,10 @@ function renderOverview() {
         owner: x.p.owner || "-",
         status: STATUS_LABEL[x.p.status] || "-",
       });
-      el.addEventListener("click", () => openPhaseModal(x.p.id, pr.id, x.cy.id));
+      el.addEventListener("click", (ev) => {
+        if (ev.ctrlKey || ev.metaKey) { toggleSelect(x.p.id); return; }
+        openPhaseModal(x.p.id, pr.id, x.cy.id);
+      });
       frag.appendChild(el);
     }
   });
@@ -4602,6 +4763,7 @@ function render() {
   renderSummary();
   if (currentPage === "gantt") renderGantt();
   else renderOverview();
+  reapplySelection();
 }
 
 function scrollToToday() {
@@ -4762,6 +4924,7 @@ function openPhaseModal(phaseId, projectId, cycleId, focusId) {
       $("mEnd").value = found.phase.end;
       $("mOwner").value = found.phase.owner || "";
       $("mStatus").value = found.phase.status || "planned";
+      $("mMemo").value = found.phase.memo || "";
       $("mHidden").checked = !!found.phase.hidden;
     }
   } else {
@@ -4771,6 +4934,7 @@ function openPhaseModal(phaseId, projectId, cycleId, focusId) {
     $("mEnd").value = t;
     $("mOwner").value = "";
     $("mStatus").value = "planned";
+    $("mMemo").value = "";
     $("mHidden").checked = false;
   }
   $("phaseOverlay").classList.add("open");
@@ -4818,7 +4982,7 @@ $("mSave").addEventListener("click", () => {
     cycle = project.cycles.find(c => c.id === $("mCycle").value);
   }
 
-  const data = { name, start, end, owner: $("mOwner").value.trim(), status: $("mStatus").value, hidden: $("mHidden").checked };
+  const data = { name, start, end, owner: $("mOwner").value.trim(), status: $("mStatus").value, hidden: $("mHidden").checked, memo: $("mMemo").value.trim() };
 
   /* 並び順は手動を尊重する（自動ソートはしない）。
      新規/サイクル移動時だけ、開始日的に自然な位置へ差し込む */
@@ -4875,6 +5039,7 @@ function openGroupModal(kind, id) {
   $("groupLabel").textContent = kind === "project" ? "プロジェクト名" : "サイクル名";
   $("gName").value = obj.name;
   $("gHidden").checked = !!obj.hidden;
+  $("gShiftRow").style.display = kind === "cycle" ? "" : "none";
   $("groupOverlay").classList.add("open");
   $("gName").focus();
 }
@@ -4934,7 +5099,8 @@ document.addEventListener("mouseover", (ev) => {
     `<div class="tt-title">${escapeHtml(d.title)}</div>` +
     `<div class="tt-sub">${escapeHtml(d.cycle)}</div>` +
     `<div>${escapeHtml(d.period)}｜${escapeHtml(d.owner)}</div>` +
-    `<div>${escapeHtml(d.status)}（クリックで編集）</div>`;
+    `<div>${escapeHtml(d.status)}（クリックで編集）</div>` +
+    (d.memo ? `<div>💬 ${escapeHtml(d.memo)}</div>` : "");
   tooltip.style.display = "block";
 });
 document.addEventListener("mousemove", (ev) => {
@@ -5064,6 +5230,244 @@ document.addEventListener("drop", (ev) => {
   else if (t.dataset.cid) movePhaseToCycleEnd(pid, t.dataset.cid);
 });
 document.addEventListener("dragend", () => { clearDropTarget(); dragPid = null; });
+
+/* ============================================================
+ * 検索（Enterで次の一致へジャンプ）
+ * ============================================================ */
+let searchQuery = "", searchIdx = -1;
+function doSearch() {
+  const q = $("searchBox").value.trim().toLowerCase();
+  if (!q) return;
+  const hits = [];
+  for (const pr of state.projects) for (const cy of pr.cycles) for (const p of cy.phases) {
+    if ((p.hidden || cy.hidden || pr.hidden) && !showHidden) continue;
+    const hay = `${p.name} ${p.owner || ""} ${p.memo || ""} ${cy.name} ${pr.name}`.toLowerCase();
+    if (hay.includes(q)) hits.push({ p, cy, pr });
+  }
+  if (!hits.length) {
+    $("searchBox").style.outline = "2px solid #d03b3b";
+    setTimeout(() => { $("searchBox").style.outline = ""; }, 700);
+    return;
+  }
+  if (q !== searchQuery) { searchQuery = q; searchIdx = 0; }
+  else searchIdx = (searchIdx + 1) % hits.length;
+  const hit = hits[searchIdx];
+  /* 折りたたみに隠れていたら開く */
+  let reopened = false;
+  if (collapsed.has(hit.cy.id)) { collapsed.delete(hit.cy.id); reopened = true; }
+  if (collapsed.has(hit.pr.id)) { collapsed.delete(hit.pr.id); reopened = true; }
+  if (reopened) { saveCollapsed(); render(); }
+  const el = document.querySelector(`.f-cell[data-pid="${hit.p.id}"], .ov-block[data-pid="${hit.p.id}"], .ov-chip[data-pid="${hit.p.id}"]`);
+  if (el) {
+    el.scrollIntoView({ block: "center", inline: "nearest" });
+    document.querySelectorAll(`[data-pid="${hit.p.id}"]`).forEach((x) => {
+      x.classList.add("search-hit");
+      setTimeout(() => x.classList.remove("search-hit"), 1600);
+    });
+  }
+}
+$("searchBox").addEventListener("keydown", (ev) => { if (ev.key === "Enter") doSearch(); });
+
+/* ============================================================
+ * Undo/Redoのボタンとキー
+ * ============================================================ */
+$("undoBtn").addEventListener("click", undo);
+$("redoBtn").addEventListener("click", redo);
+document.addEventListener("keydown", (ev) => {
+  const t = ev.target;
+  if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
+  if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && ev.key.toLowerCase() === "z") { ev.preventDefault(); undo(); }
+  else if ((ev.ctrlKey || ev.metaKey) && (ev.key.toLowerCase() === "y" || (ev.shiftKey && ev.key.toLowerCase() === "z"))) { ev.preventDefault(); redo(); }
+});
+
+/* ============================================================
+ * CSV書き出し
+ * ============================================================ */
+$("csvBtn").addEventListener("click", () => {
+  const rows = [["プロジェクト", "サイクル", "フェーズ", "開始日", "終了日", "担当", "状態", "メモ"]];
+  for (const pr of state.projects) for (const cy of pr.cycles) for (const p of cy.phases) {
+    rows.push([pr.name, cy.name, p.name, p.start, p.end, p.owner || "", STATUS_LABEL[p.status] || "", p.memo || ""]);
+  }
+  const csv = "﻿" + rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "schedule.csv";
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+/* ============================================================
+ * スプレッド貼り付け取込（TSV）
+ * ============================================================ */
+function populatePair(projSel, projNew, cycSel, cycNew) {
+  const ps = $(projSel);
+  ps.innerHTML = "";
+  for (const p of state.projects) {
+    const o = document.createElement("option"); o.value = p.id; o.textContent = p.name; ps.appendChild(o);
+  }
+  const oNew = document.createElement("option"); oNew.value = "__new__"; oNew.textContent = "＋ 新しいプロジェクト…"; ps.appendChild(oNew);
+  const syncCyc = () => {
+    $(projNew).classList.toggle("hidden", ps.value !== "__new__");
+    const cs = $(cycSel);
+    cs.innerHTML = "";
+    const pr = state.projects.find(x => x.id === ps.value);
+    if (pr) for (const c of pr.cycles) {
+      const o = document.createElement("option"); o.value = c.id; o.textContent = c.name; cs.appendChild(o);
+    }
+    const cNew = document.createElement("option"); cNew.value = "__new__"; cNew.textContent = "＋ 新しいサイクル…"; cs.appendChild(cNew);
+    if (!pr || !pr.cycles.length) cs.value = "__new__";
+    $(cycNew).classList.toggle("hidden", cs.value !== "__new__");
+  };
+  ps.onchange = syncCyc;
+  $(cycSel).onchange = () => $(cycNew).classList.toggle("hidden", $(cycSel).value !== "__new__");
+  syncCyc();
+}
+
+function parseFlexDate(str) {
+  str = String(str).trim().replace(/[年月]/g, "/").replace(/日/g, "").replace(/-/g, "/").replace(/\./g, "/");
+  let m = str.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})/);
+  if (m) return `${m[1]}-${String(+m[2]).padStart(2, "0")}-${String(+m[3]).padStart(2, "0")}`;
+  m = str.match(/^(\d{1,2})\/(\d{1,2})/);
+  if (!m) return null;
+  const mo = +m[1], dd = +m[2];
+  const now = new Date();
+  let best = null, bestDiff = Infinity;
+  for (const y of [now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1]) {
+    const cand = new Date(y, mo - 1, dd);
+    const diff = Math.abs(cand - now);
+    if (diff < bestDiff) { bestDiff = diff; best = cand; }
+  }
+  return fmtISO(best);
+}
+
+$("tsvBtn").addEventListener("click", () => {
+  populatePair("tProject", "tProjectNew", "tCycle", "tCycleNew");
+  $("tText").value = "";
+  $("tsvOverlay").classList.add("open");
+  $("tText").focus();
+});
+$("tCancel").addEventListener("click", () => $("tsvOverlay").classList.remove("open"));
+$("tsvOverlay").addEventListener("click", (e) => { if (e.target === $("tsvOverlay")) $("tsvOverlay").classList.remove("open"); });
+$("tImport").addEventListener("click", () => {
+  const lines = $("tText").value.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const parsed = [];
+  for (const line of lines) {
+    let cells = line.split("\t");
+    if (cells.length < 2) cells = line.split(/[,、]/);
+    cells = cells.map(c => c.trim());
+    const [name, startRaw, endRaw, owner, statusRaw] = cells;
+    if (!name || name === "フェーズ" || name === "フェーズ名") continue;
+    const start = parseFlexDate(startRaw || "");
+    if (!start) continue;
+    const end = endRaw ? (parseFlexDate(endRaw) || start) : start;
+    let status = "planned";
+    if (statusRaw && /完了|済/.test(statusRaw)) status = "done";
+    else if (statusRaw && /進行/.test(statusRaw)) status = "active";
+    parsed.push({ id: uid(), name, start, end, owner: owner || "", status });
+  }
+  if (!parsed.length) { alert("取り込める行がなかったよ。タブ区切り（スプレッドからコピー）か「名前,開始,終了」の形で貼ってね"); return; }
+
+  let project;
+  if ($("tProject").value === "__new__") {
+    const pn = $("tProjectNew").value.trim();
+    if (!pn) { alert("プロジェクト名を入れてね"); return; }
+    project = { id: uid(), name: pn, cycles: [] };
+    state.projects.push(project);
+  } else {
+    project = state.projects.find(p => p.id === $("tProject").value);
+  }
+  let cyc;
+  if ($("tCycle").value === "__new__") {
+    const cn = $("tCycleNew").value.trim();
+    if (!cn) { alert("サイクル名を入れてね"); return; }
+    cyc = { id: uid(), name: cn, phases: [] };
+    project.cycles.push(cyc);
+  } else {
+    cyc = project.cycles.find(c => c.id === $("tCycle").value);
+  }
+  cyc.phases.push(...parsed);
+  save();
+  refreshProjFilter();
+  $("tsvOverlay").classList.remove("open");
+  render();
+  alert(`${parsed.length}件のフェーズを「${cyc.name}」に取り込んだよ`);
+});
+
+/* ============================================================
+ * サイクル複製＋日付シフト（オートフィル的なやつ）
+ * ============================================================ */
+$("gDupShift").addEventListener("click", () => {
+  if (!editingGroup || editingGroup.kind !== "cycle") return;
+  const days = parseInt($("gShiftDays").value, 10);
+  if (!days && days !== 0) { alert("ずらす日数を入れてね"); return; }
+  for (const pr of state.projects) {
+    const i = pr.cycles.findIndex(c => c.id === editingGroup.id);
+    if (i < 0) continue;
+    const src = pr.cycles[i];
+    const copy = {
+      id: uid(),
+      name: src.name + "（コピー）",
+      phases: src.phases.map(p => ({
+        ...p,
+        id: uid(),
+        start: fmtISO(addDays(parseDate(p.start), days)),
+        end: fmtISO(addDays(parseDate(p.end), days)),
+        status: "planned",
+      })),
+    };
+    pr.cycles.splice(i + 1, 0, copy);
+    break;
+  }
+  save();
+  refreshProjFilter();
+  closeGroupModal();
+  render();
+});
+
+/* ============================================================
+ * Ctrl+クリックで複数選択 → 一括操作
+ * ============================================================ */
+const selectedPids = new Set();
+function updateBulkBar() {
+  $("bulkBar").classList.toggle("open", selectedPids.size > 0);
+  $("bulkCount").textContent = `${selectedPids.size}件選択中`;
+}
+function toggleSelect(pid) {
+  selectedPids.has(pid) ? selectedPids.delete(pid) : selectedPids.add(pid);
+  document.querySelectorAll(`[data-pid="${pid}"]`).forEach(el =>
+    el.classList.toggle("selected", selectedPids.has(pid)));
+  updateBulkBar();
+}
+function clearSelection() {
+  selectedPids.clear();
+  document.querySelectorAll(".selected").forEach(el => el.classList.remove("selected"));
+  updateBulkBar();
+}
+function reapplySelection() {
+  selectedPids.forEach(pid =>
+    document.querySelectorAll(`[data-pid="${pid}"]`).forEach(el => el.classList.add("selected")));
+}
+function bulkStatus(status) {
+  for (const pid of selectedPids) { const f = findPhase(pid); if (f) f.phase.status = status; }
+  clearSelection(); save(); render();
+}
+$("bulkDone").addEventListener("click", () => bulkStatus("done"));
+$("bulkActive").addEventListener("click", () => bulkStatus("active"));
+$("bulkPlanned").addEventListener("click", () => bulkStatus("planned"));
+$("bulkHide").addEventListener("click", () => {
+  for (const pid of selectedPids) { const f = findPhase(pid); if (f) f.phase.hidden = true; }
+  clearSelection(); save(); render();
+});
+$("bulkDelete").addEventListener("click", () => {
+  if (!confirm(`選択中の${selectedPids.size}件を削除する?`)) return;
+  const ids = new Set(selectedPids);
+  for (const pr of state.projects) for (const cy of pr.cycles) {
+    cy.phases = cy.phases.filter(p => !ids.has(p.id));
+  }
+  clearSelection(); save(); render();
+});
+$("bulkClear").addEventListener("click", clearSelection);
 
 /* ============================================================
  * ⋯メニュー（スマホ用）
@@ -5219,6 +5623,7 @@ $("pageSeg").addEventListener("click", (ev) => {
   const btn = ev.target.closest("button");
   if (!btn) return;
   currentPage = btn.dataset.page;
+  try { localStorage.setItem("gantt-lastpage", currentPage); } catch (e) {}
   document.querySelectorAll("#pageSeg button").forEach(b => b.classList.toggle("active", b === btn));
   render();
   scrollToToday();
@@ -5227,6 +5632,7 @@ $("viewSeg").addEventListener("click", (ev) => {
   const btn = ev.target.closest("button");
   if (!btn) return;
   viewMode = btn.dataset.view;
+  try { localStorage.setItem("gantt-lastview", viewMode); } catch (e) {}
   document.querySelectorAll("#viewSeg button").forEach(b => b.classList.toggle("active", b === btn));
   render();
   scrollToToday();
@@ -5274,9 +5680,20 @@ $("importFile").addEventListener("change", () => {
 /* ============================================================
  * 起動
  * ============================================================ */
+/* 前回の表示状態（ページ・日/週）を復元 */
+try {
+  const lp = localStorage.getItem("gantt-lastpage");
+  if (lp === "overview") currentPage = "overview";
+  const lv = localStorage.getItem("gantt-lastview");
+  if (lv === "week") viewMode = "week";
+} catch (e) {}
+document.querySelectorAll("#pageSeg button").forEach(b => b.classList.toggle("active", b.dataset.page === currentPage));
+document.querySelectorAll("#viewSeg button").forEach(b => b.classList.toggle("active", b.dataset.view === viewMode));
+
 refreshProjFilter();
 applyZoom();
 applySummaryVisibility();
+updateUndoButtons();
 render();
 scrollToToday();
 requestAnimationFrame(scrollToToday); /* レイアウト確定後にもう一度、確実に今日へ */
