@@ -295,10 +295,23 @@
     height: 18px;
     border-radius: 4px;
     margin: 0 1px;
-    cursor: pointer;
+    cursor: grab;
     position: relative;
     min-width: 10px;
   }
+  .bar.milestone { cursor: pointer; }
+  /* バー端のつまみ（期間変更用） */
+  .bh {
+    position: absolute;
+    top: -4px;
+    bottom: -4px;
+    width: 8px;
+    cursor: ew-resize;
+  }
+  .bh.l { left: -3px; }
+  .bh.r { right: -3px; }
+  /* 行ドラッグの挿入先ハイライト */
+  .drop-here { box-shadow: inset 0 3px 0 0 var(--accent) !important; }
   .bar:hover { filter: brightness(1.12); }
   .bar.done    { background: var(--bar-done); }
   .bar.active  { background: var(--bar-active); }
@@ -757,7 +770,9 @@
     <ul>
       <li><span class="kbd">＋ 追加</span> フェーズを追加。名前と開始日・終了日を入れれば<b>バーは自動で描かれる</b></li>
       <li>フェーズ名・日付・担当・状態の<b>セルをクリック</b>しても編集できる</li>
-      <li><b>右クリック</b>で編集・非表示・状態変更（✅完了/🔄進行中/⏳予定）・削除がワンクリック</li>
+      <li><b>バーを左右にドラッグ</b>で日程まるごと移動、<b>バーの端をつまむ</b>と期間の伸縮（PC・日ビュー）</li>
+      <li><b>フェーズ名をドラッグ</b>して行の並べ替え。別サイクルの行やサイクル名に落とすと移動</li>
+      <li><b>右クリック</b>（スマホは長押し）で編集・複製・コピー/貼り付け・上下移動・非表示・状態変更・削除</li>
       <li>フェーズ名に「公開」を含めると、全体ページで<b>公開列のチップ</b>になる</li>
     </ul>
 
@@ -784,6 +799,11 @@
 <div class="ctx" id="ctxMenu">
   <div class="ctx-title" id="ctxTitle"></div>
   <button id="ctxEdit">✏️ 編集</button>
+  <button id="ctxDup">⧉ すぐ下に複製</button>
+  <button id="ctxCopy">📋 コピー</button>
+  <button id="ctxPaste">📌 この下に貼り付け</button>
+  <button id="ctxUp">⬆ 上へ移動</button>
+  <button id="ctxDown">⬇ 下へ移動</button>
   <button id="ctxHide">🙈 非表示にする</button>
   <hr>
   <button id="ctxDone">✅ 完了にする</button>
@@ -4139,6 +4159,7 @@ function renderGantt() {
     cell.style.gridColumn = `1 / ${FIXED_COLS.length + 1}`;
     cell.style.gridRow = `${row}`;
     cell.style.left = "0px";
+    if (kind === "cycle") cell.dataset.cid = id; /* 行ドラッグの投下先（サイクル末尾へ移動） */
 
     const tri = document.createElement("span");
     tri.className = "tri";
@@ -4238,6 +4259,15 @@ function renderGantt() {
             el.title = c2.key === "phase" ? p.name : "クリックで編集";
             el.addEventListener("click", () => openPhaseModal(p.id, project.id, cycle.id, def.focus));
           }
+          if (c2.key === "phase") {
+            /* フェーズ名セルをドラッグして行の並べ替え・別サイクルへ移動 */
+            el.draggable = true;
+            el.addEventListener("dragstart", (e) => {
+              dragPid = p.id;
+              e.dataTransfer.effectAllowed = "move";
+              e.dataTransfer.setData("text/plain", p.name);
+            });
+          }
           frag.appendChild(el);
           off += c2.width;
         });
@@ -4257,7 +4287,16 @@ function renderGantt() {
           status: (STATUS_LABEL[p.status] || "-") +
             (late ? `｜⚠️${Math.round((today - e) / 86400000)}日遅れ` : ""),
         });
-        bar.addEventListener("click", () => openPhaseModal(p.id, project.id, cycle.id));
+        bar.addEventListener("click", () => {
+          if (barDragMoved) return; /* ドラッグ直後のクリックは無視 */
+          openPhaseModal(p.id, project.id, cycle.id);
+        });
+        if (!isMilestone) {
+          const hl = document.createElement("div"); hl.className = "bh l";
+          const hr = document.createElement("div"); hr.className = "bh r";
+          bar.append(hl, hr);
+          attachBarDrag(bar, p);
+        }
         frag.appendChild(bar);
 
         rowHeights.push("minmax(30px, auto)");
@@ -4781,19 +4820,27 @@ $("mSave").addEventListener("click", () => {
 
   const data = { name, start, end, owner: $("mOwner").value.trim(), status: $("mStatus").value, hidden: $("mHidden").checked };
 
+  /* 並び順は手動を尊重する（自動ソートはしない）。
+     新規/サイクル移動時だけ、開始日的に自然な位置へ差し込む */
+  const insertByDate = (cy, ph) => {
+    const i = cy.phases.findIndex(x => x.start > ph.start);
+    if (i < 0) cy.phases.push(ph);
+    else cy.phases.splice(i, 0, ph);
+  };
+
   if (editingPhaseId) {
     const found = findPhase(editingPhaseId);
     if (found) {
-      /* 別のサイクルに移された場合は移動する */
-      found.cycle.phases.splice(found.index, 1);
-      cycle.phases.push({ id: editingPhaseId, ...data });
+      if (found.cycle === cycle) {
+        Object.assign(found.phase, data); /* 同じサイクル内の編集は位置を保つ */
+      } else {
+        found.cycle.phases.splice(found.index, 1);
+        insertByDate(cycle, { id: editingPhaseId, ...data });
+      }
     }
   } else {
-    cycle.phases.push({ id: uid(), ...data });
+    insertByDate(cycle, { id: uid(), ...data });
   }
-
-  /* フェーズは開始日順に保つ */
-  cycle.phases.sort((a, b) => a.start.localeCompare(b.start));
 
   save();
   refreshProjFilter();
@@ -4879,6 +4926,7 @@ $("groupOverlay").addEventListener("click", (e) => { if (e.target === $("groupOv
  * ============================================================ */
 const tooltip = $("tooltip");
 document.addEventListener("mouseover", (ev) => {
+  if (barDragging || dragPid) return;
   const bar = ev.target.closest("[data-tt]");
   if (!bar || !bar.dataset.tt) { tooltip.style.display = "none"; return; }
   const d = JSON.parse(bar.dataset.tt);
@@ -4902,6 +4950,120 @@ document.addEventListener("mousemove", (ev) => {
 document.addEventListener("mouseout", (ev) => {
   if (ev.target.closest && ev.target.closest("[data-tt]")) tooltip.style.display = "none";
 });
+
+/* ============================================================
+ * バーのドラッグ（移動・期間変更）※PC・日ビューのみ
+ * ============================================================ */
+let barDragMoved = false;
+let barDragging = false;
+
+function attachBarDrag(bar, p) {
+  bar.addEventListener("pointerdown", (ev) => {
+    if (viewMode !== "day" || currentPage !== "gantt") return;
+    if (ev.button !== 0 || ev.pointerType === "touch") return;
+    const mode = ev.target.classList && ev.target.classList.contains("bh")
+      ? (ev.target.classList.contains("l") ? "l" : "r") : "move";
+    ev.preventDefault();
+    const startX = ev.clientX;
+    const dayW = DAY_W * (zoomPct / 100);
+    let delta = 0;
+    barDragging = true;
+    tooltip.style.display = "none";
+    try { bar.setPointerCapture(ev.pointerId); } catch (e) { /* 合成イベント等では失敗してよい */ }
+
+    const onMove = (e) => {
+      delta = Math.round((e.clientX - startX) / dayW);
+      if (Math.abs(e.clientX - startX) > 4) barDragMoved = true;
+      if (mode === "move") {
+        bar.style.transform = `translateX(${delta * DAY_W}px)`;
+      } else if (mode === "r") {
+        bar.style.marginRight = `${1 - delta * DAY_W}px`;
+      } else {
+        bar.style.marginLeft = `${1 + delta * DAY_W}px`;
+      }
+    };
+    const onUp = () => {
+      bar.removeEventListener("pointermove", onMove);
+      bar.removeEventListener("pointerup", onUp);
+      bar.removeEventListener("pointercancel", onUp);
+      bar.style.transform = ""; bar.style.marginLeft = ""; bar.style.marginRight = "";
+      barDragging = false;
+      if (!barDragMoved || delta === 0) {
+        setTimeout(() => { barDragMoved = false; }, 50);
+        return;
+      }
+      const s = parseDate(p.start), e2 = parseDate(p.end);
+      if (mode === "move") {
+        p.start = fmtISO(addDays(s, delta));
+        p.end = fmtISO(addDays(e2, delta));
+      } else if (mode === "r") {
+        const ne = addDays(e2, delta);
+        p.end = fmtISO(ne < s ? s : ne);
+      } else {
+        const ns = addDays(s, delta);
+        p.start = fmtISO(ns > e2 ? e2 : ns);
+      }
+      save(); render();
+      setTimeout(() => { barDragMoved = false; }, 50);
+    };
+    bar.addEventListener("pointermove", onMove);
+    bar.addEventListener("pointerup", onUp);
+    bar.addEventListener("pointercancel", onUp);
+  });
+}
+
+/* ============================================================
+ * 行のドラッグ&ドロップ（並べ替え・別サイクルへ移動）※PCのみ
+ * ============================================================ */
+let dragPid = null;
+let dropMarked = [];
+
+function clearDropTarget() {
+  dropMarked.forEach((el) => el.classList.remove("drop-here"));
+  dropMarked = [];
+}
+function setDropTarget(sel) {
+  clearDropTarget();
+  dropMarked = [...document.querySelectorAll(sel)];
+  dropMarked.forEach((el) => el.classList.add("drop-here"));
+}
+function movePhaseBefore(pid, targetPid) {
+  const a = findPhase(pid);
+  if (!a || pid === targetPid) return;
+  a.cycle.phases.splice(a.index, 1);
+  const b = findPhase(targetPid);
+  if (!b) { a.cycle.phases.splice(a.index, 0, a.phase); return; }
+  b.cycle.phases.splice(b.index, 0, a.phase);
+  save(); render();
+}
+function movePhaseToCycleEnd(pid, cid) {
+  const a = findPhase(pid);
+  const cy = state.projects.flatMap((pr) => pr.cycles).find((c) => c.id === cid);
+  if (!a || !cy) return;
+  a.cycle.phases.splice(a.index, 1);
+  cy.phases.push(a.phase);
+  save(); render();
+}
+document.addEventListener("dragover", (ev) => {
+  if (!dragPid) return;
+  const t = ev.target.closest("[data-pid],[data-cid]");
+  if (!t) { clearDropTarget(); return; }
+  ev.preventDefault();
+  ev.dataTransfer.dropEffect = "move";
+  setDropTarget(t.dataset.pid ? `[data-pid="${t.dataset.pid}"]` : `[data-cid="${t.dataset.cid}"]`);
+});
+document.addEventListener("drop", (ev) => {
+  const pid = dragPid;
+  clearDropTarget();
+  dragPid = null;
+  if (!pid) return;
+  const t = ev.target.closest("[data-pid],[data-cid]");
+  if (!t) return;
+  ev.preventDefault();
+  if (t.dataset.pid && t.dataset.pid !== pid) movePhaseBefore(pid, t.dataset.pid);
+  else if (t.dataset.cid) movePhaseToCycleEnd(pid, t.dataset.cid);
+});
+document.addEventListener("dragend", () => { clearDropTarget(); dragPid = null; });
 
 /* ============================================================
  * ⋯メニュー（スマホ用）
@@ -4940,6 +5102,8 @@ let ctxPid = null;
 
 function hideCtx() { ctxMenu.style.display = "none"; ctxPid = null; }
 
+let clipPhase = null; /* コピー中のフェーズ */
+
 function openCtxAt(pid, cx, cy) {
   ctxPid = pid;
   const found = findPhase(ctxPid);
@@ -4947,6 +5111,8 @@ function openCtxAt(pid, cx, cy) {
   tooltip.style.display = "none";
   $("ctxTitle").textContent = found.phase.name;
   $("ctxHide").textContent = found.phase.hidden ? "👁 表示に戻す" : "🙈 非表示にする";
+  $("ctxPaste").style.display = clipPhase ? "" : "none";
+  if (clipPhase) $("ctxPaste").textContent = `📌 「${clipPhase.name}」をこの下に貼り付け`;
   ctxMenu.style.display = "block";
   const r = ctxMenu.getBoundingClientRect();
   let x = cx, y = cy;
@@ -5006,6 +5172,31 @@ function ctxAction(fn) {
 }
 $("ctxEdit").addEventListener("click", () =>
   ctxAction((f) => openPhaseModal(f.phase.id, f.project.id, f.cycle.id)));
+$("ctxDup").addEventListener("click", () =>
+  ctxAction((f) => {
+    f.cycle.phases.splice(f.index + 1, 0, { ...f.phase, id: uid() });
+    save(); render();
+  }));
+$("ctxCopy").addEventListener("click", () =>
+  ctxAction((f) => { clipPhase = { ...f.phase }; }));
+$("ctxPaste").addEventListener("click", () =>
+  ctxAction((f) => {
+    if (!clipPhase) return;
+    f.cycle.phases.splice(f.index + 1, 0, { ...clipPhase, id: uid() });
+    save(); render();
+  }));
+$("ctxUp").addEventListener("click", () =>
+  ctxAction((f) => {
+    if (f.index === 0) return;
+    f.cycle.phases.splice(f.index - 1, 2, f.phase, f.cycle.phases[f.index - 1]);
+    save(); render();
+  }));
+$("ctxDown").addEventListener("click", () =>
+  ctxAction((f) => {
+    if (f.index >= f.cycle.phases.length - 1) return;
+    f.cycle.phases.splice(f.index, 2, f.cycle.phases[f.index + 1], f.phase);
+    save(); render();
+  }));
 $("ctxHide").addEventListener("click", () =>
   ctxAction((f) => { f.phase.hidden = !f.phase.hidden; save(); render(); }));
 $("ctxDone").addEventListener("click", () =>
