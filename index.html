@@ -810,7 +810,7 @@
 
     <h3>見る</h3>
     <ul>
-      <li><b>今日のサマリー</b> 画面上部に遅延・進行中・7日以内の公開が出る。チップを押すとそのフェーズが開く</li>
+      <li><b>今日のサマリー</b> 画面上部に遅延・進行中・7日以内の公開が出る。チップを<b>クリックでその場所へジャンプ</b>、<b>右クリックで詳細（編集）</b></li>
       <li><b>⚠️遅延（赤いバー）</b> 終了日を過ぎたのに完了になっていないフェーズは自動で赤くなる。完了にすれば消える</li>
       <li><span class="kbd">全担当 ▾</span> 担当（劇団スカッシュ等）で絞り込み</li>
       <li><span class="kbd">ガント</span> 横に時間が流れる表。<span class="kbd">日</span>/<span class="kbd">週</span>で目盛りを切替</li>
@@ -4721,8 +4721,13 @@ function renderSummary() {
       const chip = document.createElement("span");
       chip.className = "sum-chip" + (late ? " late" : "");
       chip.textContent = fmt(x);
-      chip.title = `${x.pr.name} / ${x.cy.name}`;
-      chip.addEventListener("click", () => openPhaseModal(x.p.id, x.pr.id, x.cy.id));
+      chip.title = `${x.pr.name} / ${x.cy.name}\nクリック: 場所へ移動 / 右クリック: 詳細`;
+      chip.addEventListener("click", () => jumpToPhase(x.p.id));
+      chip.addEventListener("contextmenu", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        openPhaseModal(x.p.id, x.pr.id, x.cy.id);
+      });
       body.appendChild(chip);
     });
     if (arr.length > MAX) {
@@ -5257,14 +5262,26 @@ function doSearch() {
   if (collapsed.has(hit.cy.id)) { collapsed.delete(hit.cy.id); reopened = true; }
   if (collapsed.has(hit.pr.id)) { collapsed.delete(hit.pr.id); reopened = true; }
   if (reopened) { saveCollapsed(); render(); }
-  const el = document.querySelector(`.f-cell[data-pid="${hit.p.id}"], .ov-block[data-pid="${hit.p.id}"], .ov-chip[data-pid="${hit.p.id}"]`);
-  if (el) {
-    el.scrollIntoView({ block: "center", inline: "nearest" });
-    document.querySelectorAll(`[data-pid="${hit.p.id}"]`).forEach((x) => {
-      x.classList.add("search-hit");
-      setTimeout(() => x.classList.remove("search-hit"), 1600);
-    });
-  }
+  jumpToPhase(hit.p.id);
+}
+
+/* 指定フェーズの場所へスクロール＆ハイライト（サマリー・検索から使う） */
+function jumpToPhase(pid) {
+  const f = findPhase(pid);
+  if (!f) return;
+  let reopened = false;
+  if (collapsed.has(f.cycle.id)) { collapsed.delete(f.cycle.id); reopened = true; }
+  if (collapsed.has(f.project.id)) { collapsed.delete(f.project.id); reopened = true; }
+  if (reopened) { saveCollapsed(); render(); }
+  /* ガントではバー位置（横方向）まで飛ぶ。無ければ左の固定セルへ */
+  const el = document.querySelector(`.bar[data-pid="${pid}"]`) ||
+             document.querySelector(`.f-cell[data-pid="${pid}"], .ov-block[data-pid="${pid}"], .ov-chip[data-pid="${pid}"]`);
+  if (!el) return;
+  el.scrollIntoView({ block: "center", inline: "center" });
+  document.querySelectorAll(`[data-pid="${pid}"]`).forEach((x) => {
+    x.classList.add("search-hit");
+    setTimeout(() => x.classList.remove("search-hit"), 1600);
+  });
 }
 $("searchBox").addEventListener("keydown", (ev) => { if (ev.key === "Enter") doSearch(); });
 
