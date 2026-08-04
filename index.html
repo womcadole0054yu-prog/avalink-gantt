@@ -4,6 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='0.9em' font-size='90'%3E%F0%9F%93%85%3C/text%3E%3C/svg%3E">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<meta name="theme-color" content="#274b77">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="制作ガント">
 <title>制作スケジュール ガントチャート</title>
 <style>
   :root {
@@ -5706,6 +5712,13 @@ try {
 } catch (e) {}
 document.querySelectorAll("#pageSeg button").forEach(b => b.classList.toggle("active", b.dataset.page === currentPage));
 document.querySelectorAll("#viewSeg button").forEach(b => b.classList.toggle("active", b.dataset.view === viewMode));
+
+/* PWA: サービスワーカー登録（対応環境のみ・失敗しても無視） */
+try {
+  if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  }
+} catch (e) {}
 
 refreshProjFilter();
 applyZoom();

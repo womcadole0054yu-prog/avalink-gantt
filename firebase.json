@@ -5,6 +5,6 @@
   "hosting": {
     "site": "avalink-gantt",
     "public": ".",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**", "firebase/**", "*.txt", "*.md"]
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**", "firebase/**", "backups/**", "*.txt", "*.md", "*.py"]
   }
 }
