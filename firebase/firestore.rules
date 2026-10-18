@@ -9,5 +9,10 @@ service cloud.firestore {
     match /gantt/{document=**} {
       allow read, write: if true;
     }
+    // slot-judge 実戦メモ: 店で打った台と確定示唆をスマホから記録する。
+    // PC側(confirm.py)が認証なしで取り込むため公開にしている（gantt と同じ方針）。
+    match /field_reports/{document=**} {
+      allow read, write: if true;
+    }
   }
 }

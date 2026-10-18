@@ -2,7 +2,7 @@
 """毎朝、ガントチャート(avalink-gantt.web.app)のデータを読んで
 遅延・進行中・7日以内の公開を Discord(AVALINK) へ通知する。
 データ源は Firestore gantt/state（サイトと同じもの）。
-タスクスケジューラ GanttReport_Daily から毎朝実行される。
+タスクスケジューラ 【AVALINK】ガント遅延レポート_9時 から毎朝実行される。
 """
 import os
 import sys

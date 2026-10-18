@@ -1,0 +1,5 @@
+# gantt_cli.py の作業コピー（本番データ）。公開リポジトリ・Hostingに出さない
+work/
+*.bak_*
+.firebase/
+__pycache__/
